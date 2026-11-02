@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax check
+        run: |
+          for f in js/*.js js/vendor/*.js tools/*.js; do
+            node --check "$f" || exit 1
+          done
+
+      - name: Validate JSON
+        run: node -e "for (const f of ['appinfo.json','tools/library.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
+
+      - name: Config has no secrets
+        run: |
+          if git ls-files | grep -E '(^|/)config\.local\.js$|\.ipk$'; then
+            echo "A private file is tracked"; exit 1
+          fi
+          if grep -nE "tmdbKey: *'[A-Za-z0-9._-]{20,}'|subdlKey: *'[A-Za-z0-9._-]{20,}'" js/config.js; then
+            echo "A key is hard-coded in js/config.js"; exit 1
+          fi
+
+      - name: Reference media server smoke test
+        run: |
+          node tools/media-server.js --port 8090 &
+          pid=$!
+          sleep 2
+          curl -fsS http://localhost:8090/catalog | node -e "const j=JSON.parse(require('fs').readFileSync(0,'utf8')); if(!j.items||!j.items.length) process.exit(1)"
+          curl -fsS http://localhost:8090/streams/movie/10378 | node -e "const j=JSON.parse(require('fs').readFileSync(0,'utf8')); if(!j.sources||!j.sources.length) process.exit(1)"
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/streams/movie/1)
+          [ "$code" = "404" ]
+          kill $pid
+
+      - name: Package builds
+        run: |
+          npm install -g @webos-tools/cli
+          ./package.sh

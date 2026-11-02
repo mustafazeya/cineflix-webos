@@ -1,0 +1,7 @@
+js/config.local.js
+*.ipk
+trailer-page/
+node_modules/
+.DS_Store
+.vscode/
+*.log

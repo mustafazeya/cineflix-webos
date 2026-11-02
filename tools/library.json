@@ -1,0 +1,32 @@
+{
+  "movies": [
+    {
+      "tmdbId": 10378,
+      "title": "Big Buck Bunny (Blender Foundation, CC BY 3.0)",
+      "addedAt": "2026-11-01T12:00:00Z",
+      "sources": [
+        { "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", "type": "hls", "label": "Auto" }
+      ],
+      "subtitles": []
+    },
+    {
+      "tmdbId": 45745,
+      "title": "Sintel (Blender Foundation, CC BY 3.0)",
+      "addedAt": "2026-10-30T12:00:00Z",
+      "sources": [
+        { "url": "https://cdn.theoplayer.com/video/sintel/index.m3u8", "type": "hls", "label": "Auto" }
+      ],
+      "subtitles": []
+    },
+    {
+      "tmdbId": 133701,
+      "title": "Tears of Steel (Blender Foundation, CC BY 3.0)",
+      "addedAt": "2026-10-28T12:00:00Z",
+      "sources": [
+        { "url": "https://test-streams.mux.dev/tos_ismc/main.m3u8", "type": "hls", "label": "Auto" }
+      ],
+      "subtitles": []
+    }
+  ],
+  "tv": []
+}

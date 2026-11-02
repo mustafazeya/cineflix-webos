@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920,height=1080,initial-scale=1">
+  <title>CineFlix</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="splash" class="splash">
+  <img class="splash-logo" src="icons/wordmark.png" alt="cineflix">
+  <div class="splash-bar"><div></div></div>
+</div>
+
+<nav id="sidenav" class="sidenav">
+  <div class="rail-brand"><img class="rail-mark" src="icons/mark.png" alt=""><img class="rail-word" src="icons/wordmark.png" alt="cineflix"></div>
+  <div class="rail-items">
+    <button class="tab focusable" data-route="search"><span data-icon="search"></span><span class="tab-label">Search</span></button>
+    <button class="tab focusable" data-route="home"><span data-icon="home"></span><span class="tab-label">Home</span></button>
+    <button class="tab focusable" data-route="movies"><span data-icon="film"></span><span class="tab-label">Movies</span></button>
+    <button class="tab focusable" data-route="tv"><span data-icon="tv"></span><span class="tab-label">TV Shows</span></button>
+    <button class="tab focusable" data-route="explore"><span data-icon="compass"></span><span class="tab-label">Browse</span></button>
+    <button class="tab focusable" data-route="mylist"><span data-icon="bookmark"></span><span class="tab-label">My List</span></button>
+    <button class="tab focusable" data-route="watched"><span data-icon="check-circle"></span><span class="tab-label">Watched</span></button>
+  </div>
+  <button class="tab tab-settings focusable" data-route="settings"><span data-icon="gear"></span><span class="tab-label">Settings</span></button>
+</nav>
+<div class="nav-scrim"></div>
+
+<!-- Browse (home / movies / tv / my list) -->
+<section id="screen-browse" class="screen">
+  <div class="hero" id="hero">
+    <div class="hero-bg" id="hero-bg"></div>
+    <div class="hero-shade"></div>
+    <div class="hero-info">
+      <div class="hero-kicker" id="hero-kicker"></div>
+      <img class="hero-logo hidden" id="hero-logo" alt="">
+      <h1 class="hero-title" id="hero-title"></h1>
+      <div class="hero-meta" id="hero-meta"></div>
+      <p class="hero-desc" id="hero-desc"></p>
+    </div>
+  </div>
+  <div class="rows scroller" id="rows" data-top-pad="56"></div>
+</section>
+
+<!-- Browse with filters -->
+<section id="screen-explore" class="screen">
+  <div class="explore-bar" id="explore-bar"></div>
+  <div class="explore-summary" id="explore-summary"></div>
+  <div class="explore-results scroller" id="explore-results" data-top-pad="40"></div>
+  <div class="picker hidden" id="picker">
+    <div class="picker-panel">
+      <div class="picker-title" id="picker-title"></div>
+      <input id="picker-input" class="focusable picker-input hidden" type="text" placeholder="Search by name" autocomplete="off" spellcheck="false">
+      <div class="picker-list scroller" id="picker-list"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Details -->
+<section id="screen-details" class="screen">
+  <div class="details-bg" id="details-bg"></div>
+  <div class="details-shade"></div>
+  <div class="details scroller" id="details"></div>
+</section>
+
+<!-- Search -->
+<section id="screen-search" class="screen">
+  <div class="search-panel">
+    <div class="search-field">
+      <span data-icon="search"></span>
+      <input id="search-input" class="focusable search-input" type="text" placeholder="Movies, shows, people" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="kbd" id="kbd"></div>
+  </div>
+  <div class="search-side">
+    <div class="search-heading" id="search-heading"></div>
+    <div class="search-results scroller" id="search-results" data-top-pad="20"></div>
+  </div>
+</section>
+
+<!-- Settings -->
+<section id="screen-settings" class="screen">
+  <div class="settings scroller">
+    <h1 class="page-title">Settings</h1>
+    <p class="settings-note" id="settings-note"></p>
+
+    <div class="settings-group">
+      <div class="settings-group-title">Catalog (TMDB)</div>
+      <label class="field">
+        <span>TMDB API key or read access token</span>
+        <input id="set-tmdb-key" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="Get one free at themoviedb.org/settings/api">
+      </label>
+      <label class="field">
+        <span>Language</span>
+        <input id="set-language" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="en-US">
+      </label>
+      <label class="field">
+        <span>Region (for release dates)</span>
+        <input id="set-region" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="US">
+      </label>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">Your media server</div>
+      <label class="field">
+        <span>Stream URL (plays {url}/movie/{tmdbId} and {url}/tv/{tmdbId}/{season}/{episode})</span>
+        <input id="set-stream" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="https://stream.example.com">
+      </label>
+      <div class="field">
+        <span>What the Stream URL returns</span>
+        <button class="btn focusable" id="set-stream-type" type="button"></button>
+      </div>
+      <label class="field">
+        <span>Catalog server URL (optional, defaults to the Stream URL)</span>
+        <input id="set-server" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="https://media.example.com/api">
+      </label>
+      <label class="field">
+        <span>Access token (optional)</span>
+        <input id="set-server-token" class="focusable" type="text" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>Refresh catalog every (minutes)</span>
+        <input id="set-refresh" class="focusable" type="number" min="5" placeholder="60">
+      </label>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">Subtitles (SubDL)</div>
+      <label class="field">
+        <span>SubDL API key (free at subdl.com/panel/api)</span>
+        <input id="set-subdl-key" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your key">
+      </label>
+      <label class="field">
+        <span>Subtitle languages (for example EN or EN,SV)</span>
+        <input id="set-sub-langs" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="EN">
+      </label>
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-primary focusable" id="set-save">Save</button>
+      <button class="btn focusable" id="set-test">Test connections</button>
+      <button class="btn focusable" id="set-clear">Clear watch history</button>
+    </div>
+    <div class="settings-status" id="settings-status"></div>
+    <p class="settings-credit">This product uses the TMDB API but is not endorsed or certified by TMDB. Subtitles by SubDL.</p>
+  </div>
+</section>
+
+<!-- Player -->
+<section id="screen-player" class="screen player">
+  <video id="video" preload="auto" crossorigin="anonymous"></video>
+  <iframe id="page-frame" tabindex="-1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+  <div class="trailer-hint hidden" id="page-hint">Remote controls your player&nbsp;&nbsp;&middot;&nbsp;&nbsp;BACK twice&nbsp; Details page&nbsp;&nbsp;&middot;&nbsp;&nbsp;YELLOW&nbsp; Subtitles</div>
+  <div class="subs-layer" id="subs-layer"></div>
+  <button class="subs-cc focusable hidden" id="subs-cc" type="button" aria-label="Subtitles">CC</button>
+  <div class="subs-panel hidden" id="subs-panel"><div class="subs-box" id="subs-box"></div></div>
+  <div class="player-spinner hidden" id="player-spinner"></div>
+  <div class="player-ui" id="player-ui">
+    <div class="player-top">
+      <div class="player-title" id="player-title"></div>
+      <div class="player-sub" id="player-sub"></div>
+    </div>
+    <div class="player-bottom">
+      <div class="player-progress">
+        <span id="player-time">0:00</span>
+        <div class="bar focusable" id="player-bar"><div class="bar-buf" id="bar-buf"></div><div class="bar-fill" id="bar-fill"></div><div class="bar-knob" id="bar-knob"></div></div>
+        <span id="player-dur">0:00</span>
+      </div>
+      <div class="player-controls" id="player-controls">
+        <button class="pbtn focusable" data-act="back10"><span data-icon="replay"></span> 10</button>
+        <button class="pbtn pbtn-main focusable" data-act="toggle" id="pbtn-toggle"><span data-icon="pause"></span></button>
+        <button class="pbtn focusable" data-act="fwd10">10 <span data-icon="forward"></span></button>
+        <button class="pbtn focusable" data-act="subs" id="pbtn-subs">Subtitles: Off</button>
+        <button class="pbtn focusable" data-act="quality" id="pbtn-quality">Quality</button>
+        <button class="pbtn focusable hidden" data-act="findsubs" id="pbtn-findsubs">Find subtitles</button>
+        <button class="pbtn focusable hidden" data-act="next" id="pbtn-next">Next episode <span data-icon="play"></span></button>
+      </div>
+    </div>
+  </div>
+  <div class="player-error hidden" id="player-error"></div>
+</section>
+
+<!-- Trailer -->
+<section id="screen-trailer" class="screen trailer">
+  <iframe id="trailer-frame" tabindex="-1" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  <div class="trailer-hint hidden" id="trailer-hint">OK&nbsp; Pause / Play &nbsp;&nbsp;<span data-icon="play-left"></span><span data-icon="play"></span>&nbsp; Seek 10s &nbsp;&nbsp;BACK&nbsp; Close</div>
+</section>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="js/config.js"></script>
+<script src="js/config.local.js"></script>
+<script src="js/store.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/tmdb.js"></script>
+<script src="js/server.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/vendor/fflate.js"></script>
+<script src="js/subs.js"></script>
+<script src="js/player.js"></script>
+<script src="js/explore.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

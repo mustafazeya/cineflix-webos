@@ -1,0 +1,20 @@
+{
+  "id": "com.makeflix.catalog",
+  "version": "1.0.0",
+  "vendor": "CineFlix",
+  "type": "web",
+  "main": "index.html",
+  "title": "CineFlix",
+  "appDescription": "CineFlix: TMDB-powered catalog that plays from your own licensed media server",
+  "icon": "icons/icon.png",
+  "largeIcon": "icons/largeIcon.png",
+  "bgColor": "#0b0b0b",
+  "iconColor": "#0b0b0b",
+  "disableBackHistoryAPI": false,
+  "handleKeys": true,
+  "enableMouse": true,
+  "resolution": "1920x1080",
+  "requiredPermissions": [
+    "network.internet"
+  ]
+}
