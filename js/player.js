@@ -5,7 +5,7 @@
   var KEY = MF.nav.KEY;
   var HLS_JS = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
 
-  var video, ui, frame, state = null, hideTimer = null, hintTimer = null, hls = null, hlsLoading = null;
+  var video, ui, frame, state = null, hideTimer = null, hintTimer = null, hintFadeTimer = null, hls = null, hlsLoading = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -131,11 +131,26 @@
     if (frame.contentWindow) frame.contentWindow.postMessage(msg, '*');
   }
 
+  function hideHint() {
+    var hint = $('page-hint');
+    clearTimeout(hintTimer);
+    clearTimeout(hintFadeTimer);
+    hint.classList.remove('fade');
+    hint.classList.add('hidden');
+  }
+
   function showHint() {
     var hint = $('page-hint');
-    hint.classList.remove('hidden');
+    // Subtitles are only mentioned when a SubDL key is set, i.e. when the CC button exists.
+    $('page-hint-subs').classList.toggle('hidden', !(MF.subs && MF.subs.enabled()));
     clearTimeout(hintTimer);
-    hintTimer = setTimeout(function () { hint.classList.add('hidden'); }, 3500);
+    clearTimeout(hintFadeTimer);
+    hint.classList.remove('fade');
+    hint.classList.remove('hidden');
+    hintTimer = setTimeout(function () {
+      hint.classList.add('fade');
+      hintFadeTimer = setTimeout(hideHint, 320);
+    }, 4200);
   }
 
   // Every playback gets a brand-new iframe. A reused one keeps the browser history of earlier movies, and the
@@ -237,21 +252,23 @@
     MF.app.back();
   }
 
-  function isPageFullscreen(doc) {
-    var on = false;
-    function scan(d, level) {
-      if (!d || level > 3 || on) return;
-      try {
-        if (d.fullscreenElement) { on = true; return; }
-        Array.prototype.forEach.call(d.querySelectorAll('iframe, frame'), function (fr) {
-          var inner = null;
-          try { inner = fr.contentDocument; } catch (e) { inner = null; }
-          scan(inner, level + 1);
-        });
-      } catch (e) { /* cross-origin */ }
+  // The element the page made fullscreen, with the document it lives in (descends into a fullscreen iframe). Null when not fullscreen.
+  function pageFullscreenHost(doc) {
+    var d = doc;
+    var host = null;
+    for (var level = 0; level < 4 && d; level++) {
+      var f = null;
+      try { f = d.fullscreenElement; } catch (e) { break; }
+      if (!f) break;
+      host = { doc: d, el: f };
+      if (f.tagName !== 'IFRAME' && f.tagName !== 'FRAME') break;
+      var inner = null;
+      try { inner = f.contentDocument; } catch (e) { inner = null; }
+      if (!inner) break;
+      host = { doc: inner, el: inner.fullscreenElement || inner.body || inner.documentElement };
+      d = inner;
     }
-    scan(doc, 0);
-    return on;
+    return host;
   }
 
   // When the page's video is fullscreen, Back first leaves fullscreen (the Back warning would be hidden behind it).
@@ -305,7 +322,7 @@
       var moving = !(v.paused || v.ended || v.seeking || v.readyState < 3);
       if (MF.subs) {
         MF.subs.onPageMessage({ type: 'time', position: v.currentTime, paused: !moving });
-        MF.subs.pageTrackSync(v, isPageFullscreen(doc));
+        MF.subs.pageFullscreenSync(v, pageFullscreenHost(doc));
       }
 
       var dur = v.duration;
@@ -564,7 +581,7 @@
     frame.onload = null;
     freshFrame();
     $('screen-player').classList.remove('page-mode');
-    $('page-hint').classList.add('hidden');
+    hideHint();
     if (MF.subs) MF.subs.onPageMode(false);
   }
 

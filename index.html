@@ -153,7 +153,10 @@
 <section id="screen-player" class="screen player">
   <video id="video" preload="auto" crossorigin="anonymous"></video>
   <iframe id="page-frame" tabindex="-1" allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" allowfullscreen></iframe>
-  <div class="trailer-hint hidden" id="page-hint">Remote controls your player&nbsp;&nbsp;&middot;&nbsp;&nbsp;BACK twice&nbsp; Details page&nbsp;&nbsp;&middot;&nbsp;&nbsp;YELLOW&nbsp; Subtitles</div>
+  <div class="page-hint hidden" id="page-hint">
+    <span class="hint-item"><span class="hint-key">BACK</span>Press twice to return to details</span>
+    <span class="hint-item hidden" id="page-hint-subs"><span class="hint-key"><i class="hint-dot"></i>YELLOW</span><span class="hint-or">or</span><span class="hint-key">CC</span>Subtitles</span>
+  </div>
   <div class="subs-layer" id="subs-layer"></div>
   <button class="subs-cc focusable hidden" id="subs-cc" type="button" aria-label="Subtitles">CC</button>
   <div class="subs-panel hidden" id="subs-panel"><div class="subs-box" id="subs-box"></div></div>
@@ -200,6 +203,7 @@
 <script src="js/nav.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/vendor/fflate.js"></script>
+<script src="js/cue-font.js"></script>
 <script src="js/subs.js"></script>
 <script src="js/player.js"></script>
 <script src="js/explore.js"></script>

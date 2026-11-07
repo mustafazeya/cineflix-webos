@@ -241,25 +241,34 @@
     return bridge.pos + (bridge.paused ? 0 : Math.min(elapsed, MAX_COAST));
   }
 
-  function renderCue(cue) {
-    var layer = $('subs-layer');
-    var key = cue ? cue.text : null;
-    if (key === lastShown) return;
-    lastShown = key;
+  // Builds the subtitle rows (same markup as the CSS in css/app.css expects) in any document.
+  function fillLayer(layer, cue) {
+    var doc = layer.ownerDocument;
     layer.innerHTML = '';
     if (!cue) return;
     cue.text.split('\n').forEach(function (line) {
-      var row = el('div', 'subs-line');
+      var row = doc.createElement('div');
+      row.className = 'subs-line';
       var italic = false;
       line.split(/(<\/?i>)/i).forEach(function (part) {
         if (/^<i>$/i.test(part)) { italic = true; return; }
         if (/^<\/i>$/i.test(part)) { italic = false; return; }
         if (!part) return;
-        var span = el('span', italic ? 'subs-i' : '', part);
+        var span = doc.createElement('span');
+        if (italic) span.className = 'subs-i';
+        span.textContent = part;
         row.appendChild(span);
       });
       layer.appendChild(row);
     });
+  }
+
+  function renderCue(cue) {
+    var key = cue ? cue.text : null;
+    if (key === lastShown) return;
+    lastShown = key;
+    fillLayer($('subs-layer'), cue);
+    if (pageLayer) fillLayer(pageLayer.el, cue);
   }
 
   function tick() {
@@ -282,11 +291,40 @@
     tick();
   }
 
-  // ---------- fullscreen: subtitles as a real text track on the page's video ----------
-  // The overlay above lives in the app, and a fullscreen video is drawn over it. While the page is fullscreen, the same
-  // cues go onto the video's own text track, which the browser draws inside the fullscreen video and keeps in step with it.
+  // ---------- fullscreen ----------
+  // The overlay lives in the app, and a fullscreen video is drawn over it. While the page is fullscreen, the same overlay (same CSS, same
+  // font, same text) is built inside the page's fullscreen element, so it looks exactly like normal mode. If the fullscreen element
+  // is the <video> itself it cannot hold children; then the cues go on the video's own text track, styled to match as far as a
+  // text track allows.
 
+  var pageLayer = null;                 // { el, host }
   var pageTT = null;                    // { video, tt, key }
+
+  // The same rules as .subs-layer / .subs-line in css/app.css, plus Inter as a data URL, since the page cannot load the app's font files.
+  function ensurePageStyle(doc) {
+    if (doc.getElementById('cf-sub-style')) return;
+    var face = window.MF_CUE_FONT
+      ? "@font-face { font-family: 'CineFlix Inter'; font-weight: 600; src: url(" + window.MF_CUE_FONT + ") format('woff2'); } "
+      : '';
+    var font = "'CineFlix Inter', Inter, 'LG Smart UI', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    var st = doc.createElement('style');
+    st.id = 'cf-sub-style';
+    st.textContent = face +
+      '#cf-sub-layer { position: absolute; left: 160px; right: 160px; bottom: 110px; z-index: 2147483647; text-align: center; pointer-events: none; ' +
+        'font-family: ' + font + '; font-size: 24px; font-weight: 400; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; } ' +
+      '#cf-sub-layer .subs-line { margin-top: 6px; } ' +
+      '#cf-sub-layer .subs-line span { display: inline; padding: 3px 14px; border-radius: 6px; background: rgba(0, 0, 0, .72); color: #fff; ' +
+        'font-size: 46px; font-weight: 600; line-height: 1.5; -webkit-box-decoration-break: clone; box-decoration-break: clone; text-shadow: 0 2px 6px rgba(0, 0, 0, .8); } ' +
+      '#cf-sub-layer .subs-i { font-style: italic; } ' +
+      'video::cue { color: #fff; background-color: rgba(0, 0, 0, .72); font-family: ' + font + '; font-weight: 600; font-size: 4.26vh; line-height: 1.5; text-shadow: 0 2px 6px rgba(0, 0, 0, .8); }';
+    (doc.head || doc.documentElement).appendChild(st);
+  }
+
+  function removePageLayer() {
+    if (!pageLayer) return;
+    try { if (pageLayer.el.parentNode) pageLayer.el.parentNode.removeChild(pageLayer.el); } catch (e) { /* page gone */ }
+    pageLayer = null;
+  }
 
   function removePageTrack() {
     if (!pageTT) return;
@@ -294,21 +332,11 @@
     pageTT = null;
   }
 
-  function ensureCueStyle(doc) {
-    if (doc.getElementById('cf-cue-style')) return;
-    var st = doc.createElement('style');
-    st.id = 'cf-cue-style';
-    st.textContent = 'video::cue { color: #fff; background-color: rgba(0, 0, 0, .62); font-family: Inter, Arial, sans-serif; font-size: 4.4vh; line-height: 1.25; }';
-    (doc.head || doc.documentElement).appendChild(st);
-  }
-
   function cueMarkup(text) {
     return text.replace(/&/g, '&amp;').replace(/<(?!\/?i>)/gi, '&lt;');
   }
 
-  function pageTrackSync(video, fullscreen) {
-    if (!fullscreen || !track.cues.length || !video) { removePageTrack(); return; }
-    var key = [track.name, track.lang, track.offset, track.cues.length].join('|');
+  function useTextTrack(video, key) {
     if (pageTT && pageTT.video === video && pageTT.key === key) {
       if (pageTT.tt.mode !== 'showing') pageTT.tt.mode = 'showing';
       return;
@@ -331,17 +359,42 @@
           var start = c.start - track.offset;
           var end = c.end - track.offset;
           if (end <= 0) return;
-          tt.addCue(new Cue(Math.max(0, start), end, cueMarkup(c.text)));
+          var cue = new Cue(Math.max(0, start), end, cueMarkup(c.text));
+          cue.align = 'center';
+          cue.size = 83;                // the overlay leaves 160px on each side of 1920px
+          cue.line = -2;                // sits a little above the bottom edge, like the overlay
+          tt.addCue(cue);
         });
         video.__cfTrackKey = key;
       }
       tt.mode = 'showing';
-      ensureCueStyle(doc);
+      ensurePageStyle(doc);
       pageTT = { video: video, tt: tt, key: key };
     } catch (e) { pageTT = null; }
   }
 
+  // host: { doc, el } for the page's fullscreen element, or null when the page is not fullscreen.
+  function pageFullscreenSync(video, host) {
+    if (!host || !track.cues.length) { removePageLayer(); removePageTrack(); return; }
+    if (host.el.tagName === 'VIDEO') {
+      removePageLayer();
+      if (video) useTextTrack(video, [track.name, track.lang, track.offset, track.cues.length].join('|'));
+      return;
+    }
+    removePageTrack();
+    if (pageLayer && pageLayer.host === host.el && pageLayer.el.parentNode === host.el) return;
+    removePageLayer();
+    ensurePageStyle(host.doc);
+    var layer = host.doc.createElement('div');
+    layer.id = 'cf-sub-layer';
+    host.el.appendChild(layer);
+    pageLayer = { el: layer, host: host.el };
+    lastShown = undefined;
+    tick();
+  }
+
   function clearTrack() {
+    removePageLayer();
     removePageTrack();
     track = { cues: [], name: '', lang: '', text: '', offset: 0 };
     lastShown = undefined;
@@ -555,7 +608,7 @@
       if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     },
 
-    pageTrackSync: pageTrackSync,
+    pageFullscreenSync: pageFullscreenSync,
 
     // for tests
     _parse: parseCues,

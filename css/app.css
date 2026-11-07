@@ -850,7 +850,46 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 .page-mode #page-frame { display: block; }
 .page-mode #video, .page-mode .player-ui { display: none; }
 .player-error, .player-spinner { z-index: 3; }
-#page-hint { z-index: 4; }
+/* Shown for a few seconds when a player page opens */
+.page-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 56px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  padding: 14px 32px;
+  border-radius: 999px;
+  background: rgba(18, 18, 18, .9);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .55);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text2);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: hint-in .35s var(--ease);
+  transition: opacity .3s var(--ease);
+}
+.page-hint.fade { opacity: 0; }
+.hint-item { display: flex; align-items: center; }
+.hint-key {
+  margin-right: 12px;
+  padding: 3px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+/* The yellow key of the remote, shown as a small yellow dot */
+.hint-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: #ffd43b; vertical-align: 1px; }
+.hint-or { margin: 0 12px 0 -2px; color: var(--dim); }
+@keyframes hint-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 
 
 /* Details: complete page fades in; no loading flash */
