@@ -28,6 +28,11 @@ CineFlix allows fullscreen for the player page, including after your server redi
 embed its player in a nested frame that lacks `allowfullscreen`; add `allow="fullscreen"` to that nested frame in your page. While the page is fullscreen,
 Back leaves fullscreen first.
 
+## Voice search does nothing
+webOS gives apps no microphone access. The TV's own voice recognition types the spoken words into the focused field, so this works only on a TV
+with a voice-enabled Magic Remote and voice search turned on in the TV's settings. In Search, select the mic button, then press the mic button on the
+remote and speak. You can also use the voice button on the TV's system keyboard, which appears when the field has focus.
+
 ## Back leaves the player immediately, or does nothing
 In page mode the first Back shows a warning and the second (within 3 seconds) leaves. If Back does nothing, make sure `disableBackHistoryAPI` is `false` in `appinfo.json`.
 

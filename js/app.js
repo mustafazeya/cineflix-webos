@@ -784,6 +784,7 @@
     var kbd = $('kbd');
     var input = $('search-input');
     function changed() {
+      setVoiceMode(false);
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function () { runSearch(input.value, false); }, 350);
     }
@@ -801,7 +802,42 @@
     key('Clear', 'key-wide', function () { input.value = ''; });
   }
 
+  // Voice search. webOS gives apps no microphone access: the TV's own voice recognition types the spoken words into the focused
+  // text field, started by the Magic Remote's mic button or the voice button on the system keyboard. So the mic button here
+  // clears the field, gives it real focus, and runs the search as soon as the spoken words arrive.
+  var voiceMode = false;
+  var voiceTimer = null;
+  var voiceExpiry = null;
+  var SEARCH_PLACEHOLDER = 'Movies, shows, people';
+
+  function setVoiceMode(on) {
+    voiceMode = on;
+    clearTimeout(voiceTimer);
+    clearTimeout(voiceExpiry);
+    if (on) voiceExpiry = setTimeout(function () { setVoiceMode(false); }, 25000);
+    $('search-mic').classList.toggle('listening', on);
+    $('search-input').placeholder = on ? 'Press mic on remote' : SEARCH_PLACEHOLDER;
+  }
+
+  function startVoiceSearch() {
+    var input = $('search-input');
+    input.value = '';
+    setVoiceMode(true);
+    MF.nav.focus(input, { edit: true });
+  }
+
+  function onVoiceText() {
+    if (!voiceMode) return;
+    clearTimeout(voiceTimer);
+    voiceTimer = setTimeout(function () {
+      var v = $('search-input').value;
+      setVoiceMode(false);
+      if (v.trim()) { clearTimeout(searchTimer); runSearch(v, true); }
+    }, 1200);
+  }
+
   screens.search = {
+    leave: function () { setVoiceMode(false); },
     enter: function (entry, restoreFocus) {
       if (lastQuery === null) runSearch('', false);
       if (restoreFocus) restore(entry, '#kbd .key');
@@ -944,7 +980,9 @@
       t.addEventListener('click', function () { go(t.getAttribute('data-route')); });
     });
 
+    $('search-mic').addEventListener('click', startVoiceSearch);
     $('search-input').addEventListener('input', function () {
+      onVoiceText();
       clearTimeout(searchTimer);
       var v = $('search-input').value;
       searchTimer = setTimeout(function () { runSearch(v, false); }, 450);

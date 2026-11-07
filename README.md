@@ -17,6 +17,7 @@ The iPhone version lives in [cineflix-ios](https://github.com/mustafazeya/cinefl
 
 - Home, Movies, TV Shows, Browse, Search, My List and Already Watched, with a side rail that works with the D-pad and the Magic Remote
 - Hero area that follows the focused title, and rows for Trending, Top 10, New Releases, Popular, Top Rated, Coming Soon and genres
+- **Voice search** with the Magic Remote's mic: a mic button in Search, and the spoken words run the search
 - **Browse** with filters: movies or TV, sort, genre, year or decade, actor, minimum rating, hide watched. Endless scrolling
 - Details page with rating, runtime, certification, cast, trailer, More Like This, and season and episode browsing
 - Player for MP4 and HLS with resume, Continue Watching, auto next episode, quality switching and remote media keys

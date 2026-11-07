@@ -513,6 +513,23 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 }
 .search-input::placeholder { color: #5f5f5f; font-weight: 500; }
 .search-input.focused { background: rgba(255, 255, 255, .1); }
+.search-mic {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
+  margin-left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.search-mic .ico { width: 28px; height: 28px; }
+.search-mic:hover, .search-mic.focused { background: #fff; color: #000; }
+.search-mic.listening { background: var(--accent); color: #fff; }
 
 .kbd { display: flex; flex-wrap: wrap; width: 620px; }
 .key {
