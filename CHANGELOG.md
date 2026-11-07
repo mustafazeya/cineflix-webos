@@ -5,6 +5,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fullscreen in player pages: the frame now allows fullscreen for the page after a redirect to another address, which was blocked before
+- Back leaves fullscreen first, before the "press Back again" warning
+
 ## [1.0.0] - 2026-11-02
 
 First public release.

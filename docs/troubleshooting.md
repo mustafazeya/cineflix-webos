@@ -23,6 +23,11 @@ Check the SubDL key under Settings > Subtitles. SubDL also has daily limits; the
 On the TV, CineFlix reads the page's `<video>` directly. If the panel says it could not read the page's video time, the page may use a video the app
 cannot reach, or the platform blocks reading the frame. Add the [page bridge](player-pages.md#the-optional-page-bridge) to your page.
 
+## Fullscreen (maximize) button does nothing in my player page
+CineFlix allows fullscreen for the player page, including after your server redirects it to another address. If it still does nothing, the page may
+embed its player in a nested frame that lacks `allowfullscreen`; add `allow="fullscreen"` to that nested frame in your page. While the page is fullscreen,
+Back leaves fullscreen first.
+
 ## Back leaves the player immediately, or does nothing
 In page mode the first Back shows a warning and the second (within 3 seconds) leaves. If Back does nothing, make sure `disableBackHistoryAPI` is `false` in `appinfo.json`.
 

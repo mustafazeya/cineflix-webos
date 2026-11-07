@@ -144,7 +144,9 @@
     var f = document.createElement('iframe');
     f.id = 'page-frame';
     f.tabIndex = -1;
-    f.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+    // The wildcards matter: a bare "fullscreen" only covers the frame's first address, so a server that redirects
+    // the page to another host would silently lose fullscreen.
+    f.setAttribute('allow', 'autoplay *; fullscreen *; encrypted-media *; picture-in-picture *');
     f.setAttribute('allowfullscreen', '');
     frame.parentNode.replaceChild(f, frame);
     frame = f;
@@ -235,10 +237,29 @@
     MF.app.back();
   }
 
+  // When the page's video is fullscreen, Back first leaves fullscreen (the Back warning would be hidden behind it).
+  function exitPageFullscreen() {
+    var exited = false;
+    function scan(d, level) {
+      if (!d || level > 3) return;
+      try {
+        if (d.fullscreenElement && d.exitFullscreen) { d.exitFullscreen(); exited = true; }
+        Array.prototype.forEach.call(d.querySelectorAll('iframe, frame'), function (fr) {
+          var inner = null;
+          try { inner = fr.contentDocument; } catch (e) { inner = null; }
+          scan(inner, level + 1);
+        });
+      } catch (e) { /* cross-origin */ }
+    }
+    try { scan(frame.contentDocument, 0); } catch (e) { /* cross-origin */ }
+    return exited;
+  }
+
   // In page mode a stray Back press would drop the video, so the first press only warns.
   // A second press within 3 s returns to the movie or series page.
   function confirmBack() {
     if (!state || state.mode !== 'page' || state.leaveOk) return false;
+    if (exitPageFullscreen()) return true;
     if (Date.now() - (state.warnedAt || 0) < 3000) return false;
     state.warnedAt = Date.now();
     MF.ui.toast('Press Back again to return to the ' + (state.type === 'tv' ? 'series' : 'movie') + ' page', 3000);
