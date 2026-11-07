@@ -23,6 +23,12 @@ Subtitles follow the real video clock and nothing else.
 - If the clock goes quiet for more than one second, the text stops rather than guessing.
 - For videos CineFlix plays itself, the clock is the video element. For your own web player page, see [Player pages](player-pages.md).
 
+## Fullscreen
+
+CineFlix draws subtitles above your page, and a fullscreen video is drawn over that layer. While the page's video is fullscreen, CineFlix therefore adds the same subtitles
+as a text track on the video itself (one track named "CineFlix" per video), which the browser draws inside the fullscreen video and keeps in step with it.
+When fullscreen ends, the track is switched off and the normal layer takes over again. This needs the TV to let CineFlix read your page's video, as described in [Player pages](player-pages.md).
+
 ## TV series: season packs
 
 For episodes, SubDL often only has a zip containing a whole season. CineFlix handles this for you:

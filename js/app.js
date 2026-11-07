@@ -816,7 +816,7 @@
     clearTimeout(voiceExpiry);
     if (on) voiceExpiry = setTimeout(function () { setVoiceMode(false); }, 25000);
     $('search-mic').classList.toggle('listening', on);
-    $('search-input').placeholder = on ? 'Press mic on remote' : SEARCH_PLACEHOLDER;
+    $('search-input').placeholder = on ? 'Use mic on keyboard' : SEARCH_PLACEHOLDER;
   }
 
   function startVoiceSearch() {

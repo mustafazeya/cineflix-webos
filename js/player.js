@@ -237,6 +237,23 @@
     MF.app.back();
   }
 
+  function isPageFullscreen(doc) {
+    var on = false;
+    function scan(d, level) {
+      if (!d || level > 3 || on) return;
+      try {
+        if (d.fullscreenElement) { on = true; return; }
+        Array.prototype.forEach.call(d.querySelectorAll('iframe, frame'), function (fr) {
+          var inner = null;
+          try { inner = fr.contentDocument; } catch (e) { inner = null; }
+          scan(inner, level + 1);
+        });
+      } catch (e) { /* cross-origin */ }
+    }
+    scan(doc, 0);
+    return on;
+  }
+
   // When the page's video is fullscreen, Back first leaves fullscreen (the Back warning would be hidden behind it).
   function exitPageFullscreen() {
     var exited = false;
@@ -286,7 +303,10 @@
       if (!v) return;
 
       var moving = !(v.paused || v.ended || v.seeking || v.readyState < 3);
-      if (MF.subs) MF.subs.onPageMessage({ type: 'time', position: v.currentTime, paused: !moving });
+      if (MF.subs) {
+        MF.subs.onPageMessage({ type: 'time', position: v.currentTime, paused: !moving });
+        MF.subs.pageTrackSync(v, isPageFullscreen(doc));
+      }
 
       var dur = v.duration;
       if (dur && isFinite(dur)) {

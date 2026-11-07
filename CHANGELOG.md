@@ -6,9 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Voice search: a mic button next to the Search field. It clears the field and focuses it, so the Magic Remote's mic fills it, and the search runs when the words arrive
+- Voice search: a mic button next to the Search field. It clears the field and opens the TV keyboard, whose voice key dictates into it, and the search runs when the words arrive
 
 ### Fixed
+- Subtitles stayed hidden when the page's video went fullscreen; they are now drawn on the page's own video while it is fullscreen
 - Fullscreen in player pages: the frame now allows fullscreen for the page after a redirect to another address, which was blocked before
 - Back leaves fullscreen first, before the "press Back again" warning
 

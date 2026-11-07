@@ -282,7 +282,67 @@
     tick();
   }
 
+  // ---------- fullscreen: subtitles as a real text track on the page's video ----------
+  // The overlay above lives in the app, and a fullscreen video is drawn over it. While the page is fullscreen, the same
+  // cues go onto the video's own text track, which the browser draws inside the fullscreen video and keeps in step with it.
+
+  var pageTT = null;                    // { video, tt, key }
+
+  function removePageTrack() {
+    if (!pageTT) return;
+    try { pageTT.tt.mode = 'disabled'; } catch (e) { /* page gone */ }
+    pageTT = null;
+  }
+
+  function ensureCueStyle(doc) {
+    if (doc.getElementById('cf-cue-style')) return;
+    var st = doc.createElement('style');
+    st.id = 'cf-cue-style';
+    st.textContent = 'video::cue { color: #fff; background-color: rgba(0, 0, 0, .62); font-family: Inter, Arial, sans-serif; font-size: 4.4vh; line-height: 1.25; }';
+    (doc.head || doc.documentElement).appendChild(st);
+  }
+
+  function cueMarkup(text) {
+    return text.replace(/&/g, '&amp;').replace(/<(?!\/?i>)/gi, '&lt;');
+  }
+
+  function pageTrackSync(video, fullscreen) {
+    if (!fullscreen || !track.cues.length || !video) { removePageTrack(); return; }
+    var key = [track.name, track.lang, track.offset, track.cues.length].join('|');
+    if (pageTT && pageTT.video === video && pageTT.key === key) {
+      if (pageTT.tt.mode !== 'showing') pageTT.tt.mode = 'showing';
+      return;
+    }
+    removePageTrack();
+    try {
+      var doc = video.ownerDocument;
+      // A video cannot lose a text track once added, so each video keeps one CineFlix track that is refilled when needed.
+      var tt = video.__cfTrack;
+      if (!tt) {
+        tt = video.addTextTrack('subtitles', 'CineFlix', (track.lang || 'en').toLowerCase());
+        video.__cfTrack = tt;
+      }
+      if (video.__cfTrackKey !== key) {
+        var Cue = (doc.defaultView && doc.defaultView.VTTCue) || window.VTTCue;
+        tt.mode = 'hidden';
+        while (tt.cues && tt.cues.length) tt.removeCue(tt.cues[0]);
+        track.cues.forEach(function (c) {
+          // The overlay shows a cue when videoTime + offset is inside it, so the cue sits at start - offset.
+          var start = c.start - track.offset;
+          var end = c.end - track.offset;
+          if (end <= 0) return;
+          tt.addCue(new Cue(Math.max(0, start), end, cueMarkup(c.text)));
+        });
+        video.__cfTrackKey = key;
+      }
+      tt.mode = 'showing';
+      ensureCueStyle(doc);
+      pageTT = { video: video, tt: tt, key: key };
+    } catch (e) { pageTT = null; }
+  }
+
   function clearTrack() {
+    removePageTrack();
     track = { cues: [], name: '', lang: '', text: '', offset: 0 };
     lastShown = undefined;
     renderCue(null);
@@ -494,6 +554,8 @@
       clearTrack();
       if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     },
+
+    pageTrackSync: pageTrackSync,
 
     // for tests
     _parse: parseCues,
