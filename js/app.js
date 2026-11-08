@@ -61,13 +61,15 @@
 
   // ------------------------- Router -------------------------
 
-  var TABS = ['home', 'movies', 'tv', 'explore', 'mylist', 'watched', 'search', 'settings'];
+  var TABS = ['home', 'movies', 'tv', 'explore', 'mylist', 'watched', 'videos', 'search', 'settings', 'account'];
   var SCREEN_FOR = {
     explore: 'explore',
     home: 'browse', movies: 'browse', tv: 'browse', mylist: 'browse', watched: 'browse',
-    search: 'search', settings: 'settings', details: 'details', player: 'player', trailer: 'trailer'
+    search: 'search', settings: 'settings', details: 'details', player: 'player', trailer: 'trailer',
+    account: 'account', profiles: 'profiles', signin: 'signin', 'profile-edit': 'profile-edit', avatars: 'avatars',
+    videos: 'videos', 'video-edit': 'video-edit', 'mega-browse': 'mega'
   };
-  var NO_NAV = { details: 1, player: 1, trailer: 1 };
+  var NO_NAV = { details: 1, player: 1, trailer: 1, profiles: 1, signin: 1, 'profile-edit': 1, avatars: 1, 'video-edit': 1, 'mega-browse': 1 };
 
   var stack = [];
   var stale = {};
@@ -108,6 +110,7 @@
 
   function back() {
     if (MF.subs && MF.subs.handleBack()) return;
+    if (MF.account && MF.account.handleBack()) return;
     if (MF.player && MF.player.confirmBack && top() && top().route === 'player' && MF.player.confirmBack()) return;
     if (MF.explore.pickerOpen()) { MF.explore.closePicker(); return; }
     if (stack.length > 1) {
@@ -160,6 +163,22 @@
     };
     ui.prefetchTitle(item).then(open, open);
     setTimeout(open, 450);
+  }
+
+  // The hero's two buttons act on the title the hero is showing: More Info opens its page, Play does what its page's Play button does.
+  function initHeroButtons() {
+    $('hero-more').addEventListener('click', function () {
+      var item = ui.heroItem();
+      if (item) openItem(item);
+    });
+    $('hero-play').addEventListener('click', function () {
+      var item = ui.heroItem();
+      if (!item) return;
+      MF.tmdb.details(item.media_type, item.id).then(function (d) {
+        d.media_type = item.media_type;
+        playButton(d).click();
+      }, function (e) { ui.toast(e.message || 'Could not load this title', 4000); });
+    });
   }
 
   // ------------------------- Browse screen -------------------------
@@ -282,6 +301,15 @@
   }
 
   var screens = {};
+
+  screens['profile-edit'] = { enter: function (entry, restore) { MF.account.editScreen.enter(entry, restore); }, leave: function () { MF.account.editScreen.leave(); } };
+  screens.avatars = { enter: function (entry, restore) { MF.account.avatarScreen.enter(entry, restore); }, leave: function () { MF.account.avatarScreen.leave(); } };
+  screens.videos = { enter: function (entry, restore) { MF.videos.listScreen.enter(entry, restore); }, leave: function (entry) { MF.videos.listScreen.leave(entry); } };
+  screens.mega = { enter: function (entry, restore) { MF.videos.megaScreen.enter(entry, restore); }, leave: function (entry) { MF.videos.megaScreen.leave(entry); } };
+  screens['video-edit'] = { enter: function (entry, restore) { MF.videos.editScreen.enter(entry, restore); }, leave: function () { MF.videos.editScreen.leave(); } };
+  screens.account = { enter: function (entry, restore) { MF.account.accountScreen.enter(entry, restore); }, leave: function () { MF.account.accountScreen.leave(); } };
+  screens.profiles = { enter: function (entry, restore) { MF.account.profilesScreen.enter(entry, restore); }, leave: function () { MF.account.profilesScreen.leave(); } };
+  screens.signin = { enter: function (entry, restore) { MF.account.signinScreen.enter(entry, restore); }, leave: function () { MF.account.signinScreen.leave(); } };
 
   screens.browse = {
     enter: function (entry, restoreFocus) {
@@ -683,6 +711,19 @@
     return 'https://www.youtube.com/embed/' + encodeURIComponent(key) + '?autoplay=1&rel=0';
   }
 
+  // Each trailer gets a brand-new iframe (and it is thrown away on leaving). Re-pointing one iframe adds entries to the
+  // browser history, and the Back key (a history step on webOS) would then walk the iframe back and restart the trailer.
+  function freshTrailerFrame(src) {
+    var old = $('trailer-frame');
+    var f = document.createElement('iframe');
+    f.id = 'trailer-frame';
+    f.tabIndex = -1;
+    f.setAttribute('allow', 'autoplay *; fullscreen *');
+    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    old.parentNode.replaceChild(f, old);
+    if (src) f.src = src;
+  }
+
   function trailerCmd(msg) {
     var frame = $('trailer-frame');
     msg.source = 'mf-app';
@@ -723,12 +764,12 @@
 
   screens.trailer = {
     enter: function (entry) {
-      $('trailer-frame').src = trailerUrl(entry.params.key);
+      freshTrailerFrame(trailerUrl(entry.params.key));
       MF.nav.handler = trailerKeys;
       showTrailerHint();
     },
     leave: function () {
-      $('trailer-frame').src = 'about:blank';
+      freshTrailerFrame('');
       $('trailer-hint').classList.add('hidden');
     }
   };
@@ -854,6 +895,7 @@
     'set-region': 'region',
     'set-subdl-key': 'subdlKey',
     'set-sub-langs': 'subLangs',
+    'set-sync-server': 'syncServer',
     'set-stream': 'streamBase',
     'set-server': 'serverBase',
     'set-server-token': 'serverToken',
@@ -975,6 +1017,7 @@
     setTimeout(hideSplash, 4000);
     MF.player.init();
     bindSettings();
+    MF.account.init();
 
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
       t.addEventListener('click', function () { go(t.getAttribute('data-route')); });
@@ -1019,6 +1062,8 @@
     });
 
     scheduleRefresh();
+    initHeroButtons();
+    MF.videos.init();
     MF.server.catalog().then(function (items) { knownCount = items.length; }, function () { /* surfaced on details/play */ });
     if (!MF.settings.tmdbKey) {
       hideSplash();
@@ -1027,12 +1072,22 @@
     }
     // Genre names are used in hero and card meta; wait briefly for them, but never block start-up.
     var started = false;
-    var start = function () { if (!started) { started = true; go('home'); } };
+    var start = function () { if (!started) { started = true; MF.account.startup(function () { go('home'); }); } };
     ui.loadGenres().then(start);
     setTimeout(start, 1500);
   }
 
-  MF.app = { go: go, back: back, openItem: openItem, noteBackKey: function () { lastBackKeyAt = Date.now(); } };
+  // Marks screens for a rebuild after the data behind them changed. full = a different profile or account; otherwise only Continue Watching.
+  function invalidate(full) {
+    if (full !== false) Object.keys(browseViews).forEach(function (r) { stale[r] = true; });
+    stale.continue = true;
+  }
+
+  MF.app = {
+    go: go, back: back, openItem: openItem, invalidate: invalidate,
+    top: top, depth: function () { return stack.length; }, exit: function () { exitApp(); },
+    noteBackKey: function () { lastBackKeyAt = Date.now(); }
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

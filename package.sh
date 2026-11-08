@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the .ipk for the TV, including js/config.local.js if present.
 #   ./package.sh            -> ../com.makeflix.catalog_<version>_all.ipk
-#   ./package.sh install [device]   -> also installs and launches (e.g. ./package.sh install my-lg-tv)
+#   ./package.sh install [device] [--launch]   -> also installs (e.g. ./package.sh install my-lg-tv); --launch opens the app afterwards
 #                                      tries <device> (LAN) then <device>-wifi, whichever answers
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -29,7 +29,7 @@ ares-package "$stage" -o ..
 if [ "${1:-}" = "install" ]; then
   version=$(python3 -c 'import json;print(json.load(open("appinfo.json"))["version"])')
   device_args=()
-  if [ -n "${2:-}" ]; then
+  if [ -n "${2:-}" ] && [ "${2:-}" != "--launch" ]; then
     # Try the device, then any "<device>-*" alternates (e.g. my-lg-tv-wifi); use the first that answers.
     chosen=""
     for dev in $(ares-setup-device -l 2>/dev/null | awk -v d="$2" '$1==d || index($1, d"-")==1 {print $1}'); do
@@ -45,5 +45,7 @@ if [ "${1:-}" = "install" ]; then
     device_args=(-d "$chosen")
   fi
   ares-install ${device_args[@]+"${device_args[@]}"} "../com.makeflix.catalog_${version}_all.ipk"
-  ares-launch ${device_args[@]+"${device_args[@]}"} com.makeflix.catalog
+  case " $* " in
+    *" --launch "*) ares-launch ${device_args[@]+"${device_args[@]}"} com.makeflix.catalog ;;
+  esac
 fi

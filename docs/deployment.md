@@ -21,7 +21,7 @@ ares-setup-device -l                    # list devices
 ```bash
 cp js/config.local.example.js js/config.local.js     # then edit it
 ./package.sh                                         # builds ../com.makeflix.catalog_<version>_all.ipk
-./package.sh install my-lg-tv                        # build, install and launch on the TV
+./package.sh install my-lg-tv                        # build and install on the TV (add --launch to open it)
 ```
 
 `package.sh` stages only what the TV needs (no `tools/`, docs or examples) and refuses to build if `config.local.js` still has the placeholder key.

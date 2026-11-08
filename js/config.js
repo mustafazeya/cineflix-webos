@@ -17,6 +17,8 @@ window.MF_DEFAULTS = {
   // SubDL key for the subtitle search (free at subdl.com/panel/api) and the languages to look for.
   subdlKey: '',
   subLangs: 'EN',
+  // Where the sync server lives, e.g. 'https://cineflix-sync.example.workers.dev'. Empty keeps the app fully local.
+  syncServer: '',
   trailerPage: 'https://www.zeyamustafa.online/movies/trailer.html',
   serverToken: '',
   refreshMinutes: 60

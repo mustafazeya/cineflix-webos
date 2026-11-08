@@ -20,6 +20,7 @@
 
   function scopes() {
     // A picker overlay is modal: only its items can take focus.
+    if (document.body.classList.contains('dialog-open')) return [document.getElementById('dialog')];
     if (document.body.classList.contains('picker-open')) return [document.getElementById('picker')];
     if (document.body.classList.contains('subs-open')) {
       var ui = document.querySelector('#subs-panel:not(.hidden), #subs-menu:not(.hidden)');
@@ -127,6 +128,8 @@
       if (el === current) return;
       // Up/Down inside the side menu stays in the menu.
       if (railOnly && !el.closest('#sidenav')) return;
+      // Up/Down from the content never jumps into the side menu; Left does that.
+      if (!horizontal && !railOnly && el.closest('#sidenav')) return;
       var r = el.getBoundingClientRect();
       var c = centre(r);
       var primary, secondary;

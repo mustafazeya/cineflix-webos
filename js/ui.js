@@ -283,6 +283,7 @@
 
   var heroTimer = null;
   var heroFull = {};
+  var heroShown = null;
   function setHero(item, kicker) {
     clearTimeout(heroTimer);
     heroTimer = setTimeout(function () {
@@ -315,6 +316,7 @@
           probe.src = url;
         }
       }
+      heroShown = item;
       document.getElementById('hero-kicker').textContent = kicker || (item.media_type === 'tv' ? 'SERIES' : 'MOVIE');
       applyLogo(item, document.getElementById('hero-logo'), document.getElementById('hero-title'));
       var meta = [];
@@ -384,6 +386,7 @@
     wideCard: wideCard,
     row: row,
     setHero: setHero,
+    heroItem: function () { return heroShown; },
     setMeta: setMeta,
     toast: toast,
     message: message

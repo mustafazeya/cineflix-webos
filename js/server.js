@@ -160,6 +160,17 @@
       return !!catalogState.keys[MF.store.itemKey(type, id)];
     },
 
+    // A link saved by hand (My Videos): a video file, an HLS stream, or a web page with its own player.
+    direct: function (link) {
+      var full = withToken(link);
+      if (/\.m3u8(\?|#|$)/i.test(full)) return Promise.resolve({ sources: [{ url: full, type: 'hls', quality: '', label: 'Auto' }], subtitles: [] });
+      if (/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(full)) return Promise.resolve({ sources: [{ url: full, type: 'mp4', quality: '', label: 'Auto' }], subtitles: [], pageFallback: full });
+      return probe(full).then(function (kind) {
+        if (kind === 'page') return { page: full, sources: [], subtitles: [] };
+        return { sources: [{ url: full, type: kind, quality: '', label: 'Auto' }], subtitles: [], pageFallback: full };
+      });
+    },
+
     streams: function (type, id, season, episode) {
       if (streamBase()) {
         var url = streamBase() + (type === 'tv'

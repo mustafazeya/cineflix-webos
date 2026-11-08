@@ -17,7 +17,8 @@ The wordmark image was rendered with a system font whose license does not allow 
 |---|---|---|
 | [Inter](https://rsms.me/inter/) fonts | `fonts/` | SIL Open Font License 1.1, see `fonts/OFL.txt` |
 | [fflate](https://github.com/101arrowz/fflate) | `js/vendor/fflate.js` | MIT, see `js/vendor/fflate-LICENSE.txt` |
-| [hls.js](https://github.com/video-dev/hls.js) | loaded from jsDelivr only when running in a desktop browser; not bundled | Apache-2.0 |
+| [hls.js](https://github.com/video-dev/hls.js) | `js/vendor/hls.min.js`, used when the TV's own HLS player cannot play a stream | Apache-2.0, see `js/vendor/hls.js-LICENSE.txt` |
+| [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) | `js/vendor/qrcode.js` | MIT |
 
 ## Services and content
 

@@ -3,7 +3,7 @@
 
   var MF = window.MF;
   var KEY = MF.nav.KEY;
-  var HLS_JS = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+  var HLS_JS = 'js/vendor/hls.min.js';
 
   var video, ui, frame, state = null, hideTimer = null, hintTimer = null, hintFadeTimer = null, hls = null, hlsLoading = null;
 
@@ -13,7 +13,7 @@
     return source.type === 'hls' && !video.canPlayType('application/vnd.apple.mpegurl') && !video.canPlayType('application/x-mpegURL');
   }
 
-  // Native HLS on LG webOS; hls.js is only loaded when running in a desktop browser for development.
+  // The TV's own HLS player is tried first. When it can't play a stream (for example an encrypted playlist), hls.js takes over.
   function loadHlsJs() {
     if (window.Hls) return Promise.resolve(window.Hls);
     if (hlsLoading) return hlsLoading;
@@ -52,24 +52,26 @@
     setSpinner(false);
   }
 
-  function setSource(index, startAt) {
+  function setSource(index, startAt, forceHls) {
     var source = state.sources[index];
     if (!source) { showError('This title could not be played. Check your media server.'); return; }
     state.srcIndex = index;
     $('pbtn-quality').textContent = 'Quality: ' + source.label;
     $('pbtn-quality').classList.toggle('hidden', state.sources.length < 2);
-    $('pbtn-findsubs').classList.toggle('hidden', !(MF.subs && MF.subs.enabled()));
+    $('pbtn-findsubs').classList.toggle('hidden', !subsOn());
     destroyHls();
     setSpinner(true);
     state.pendingSeek = startAt || 0;
+    if (!forceHls) state.hlsTried = false;
 
-    if (needsHlsJs(source)) {
+    if (forceHls || needsHlsJs(source)) {
       loadHlsJs().then(function (Hls) {
         if (!state || state.srcIndex !== index) return;
         if (!Hls.isSupported()) { showError('HLS playback is not supported here.'); return; }
-        hls = new Hls({ xhrSetup: authXhr });
+        hls = new Hls({ xhrSetup: authXhr, maxBufferLength: 40, backBufferLength: 30 });
         hls.loadSource(source.url);
         hls.attachMedia(video);
+        if (state.pendingSeek > 1) hls.on(Hls.Events.MANIFEST_PARSED, function () { video.currentTime = state.pendingSeek; });
         hls.on(Hls.Events.ERROR, function (_, data) { if (data.fatal) failover(); });
       }, function (err) { showError(err.message); });
     } else {
@@ -91,6 +93,13 @@
 
   function failover() {
     if (!state) return;
+    var current = state.sources[state.srcIndex];
+    // The TV's own player gave up on an HLS stream: try hls.js on the same stream before anything else.
+    if (current && current.type === 'hls' && !hls && !state.hlsTried) {
+      state.hlsTried = true;
+      setSource(state.srcIndex, video.currentTime || state.pendingSeek, true);
+      return;
+    }
     var next = state.srcIndex + 1;
     if (next < state.sources.length) {
       MF.ui.toast('Trying ' + state.sources[next].label + '...');
@@ -142,7 +151,8 @@
   function showHint() {
     var hint = $('page-hint');
     // Subtitles are only mentioned when a SubDL key is set, i.e. when the CC button exists.
-    $('page-hint-subs').classList.toggle('hidden', !(MF.subs && MF.subs.enabled()));
+    $('page-hint-subs').classList.toggle('hidden', !(subsOn()));
+    $('page-hint-back').textContent = state && state.custom ? 'Press twice to leave' : 'Press twice to return to details';
     clearTimeout(hintTimer);
     clearTimeout(hintFadeTimer);
     hint.classList.remove('fade');
@@ -174,7 +184,7 @@
     video.removeAttribute('src');
     state.mode = 'page';
     markStarted();
-    if (MF.subs) MF.subs.onPageMode(true);
+    if (MF.subs) MF.subs.onPageMode(subsOn());
     $('pbtn-findsubs').classList.add('hidden');
     state.pageResume = resume || 0;
     state.pageReady = false;
@@ -235,7 +245,7 @@
     if (doc.__cfKeys) return;
     doc.__cfKeys = true;
     doc.addEventListener('keydown', function (e) {
-      if (e.keyCode === KEY.YELLOW && state && state.mode === 'page' && MF.subs && MF.subs.enabled()) {
+      if (e.keyCode === KEY.YELLOW && state && state.mode === 'page' && subsOn()) {
         e.preventDefault();
         MF.subs.openPanel();
       }
@@ -296,7 +306,7 @@
     if (exitPageFullscreen()) return true;
     if (Date.now() - (state.warnedAt || 0) < 3000) return false;
     state.warnedAt = Date.now();
-    MF.ui.toast('Press Back again to return to the ' + (state.type === 'tv' ? 'series' : 'movie') + ' page', 3000);
+    MF.ui.toast(state.custom ? 'Press Back again to leave the video' : 'Press Back again to return to the ' + (state.type === 'tv' ? 'series' : 'movie') + ' page', 3000);
     return true;
   }
 
@@ -377,7 +387,7 @@
 
   function onPageKey(code) {
     if (code === KEY.STOP) { leave(); return true; }
-    if (code === KEY.YELLOW && MF.subs && MF.subs.enabled()) { MF.subs.openPanel(); return true; }
+    if (code === KEY.YELLOW && subsOn()) { MF.subs.openPanel(); return true; }
     // Focus came back to the app (e.g. pointer click): return it to the page, then forward this key.
     setTimeout(focusPage, 0);
     if (!KEY_NAMES[code]) return false;
@@ -412,8 +422,11 @@
     $('pbtn-subs').textContent = 'Subtitles: ' + (index < 0 ? 'Off' : state.subtitles[index].label);
   }
 
+  // Subtitle search needs a TMDB title, so it is not offered for links saved by hand.
+  function subsOn() { return !!(MF.subs && MF.subs.enabled() && !(state && state.custom)); }
+
   function save(force) {
-    if (!state) return;
+    if (!state || state.custom) return;
     var pos = state.mode === 'page' ? state.pagePos : video.currentTime;
     var dur = state.mode === 'page' ? state.pageDur : video.duration;
     if (!dur || !isFinite(dur)) return;
@@ -436,6 +449,7 @@
 
   // Adds the title to Continue Watching as soon as it starts, keeping any known position for this episode.
   function markStarted() {
+    if (state.custom) return;
     var prev = MF.store.getProgress(state.type, state.id);
     var same = prev && (state.type === 'movie' || (prev.season === state.season && prev.episode === state.episode));
     MF.store.setProgress({
@@ -593,7 +607,7 @@
     confirmBack: confirmBack,
     // What is playing, for the subtitle search and its clock.
     context: function () {
-      if (!state) return null;
+      if (!state || state.custom) return null;
       return { type: state.type, id: state.id, season: state.season, episode: state.episode, title: state.title || '',
         mode: state.mode === 'page' ? 'page' : 'native', currentTime: video ? video.currentTime : 0 };
     },
@@ -614,12 +628,16 @@
       setSpinner(true);
       showUI($('player-bar'));
 
-      if (MF.subs) MF.subs.onPlayerOpen({ type: opts.type, id: opts.id, season: opts.season, episode: opts.episode, title: opts.title || '' });
+      if (MF.subs) {
+        if (opts.custom) MF.subs.onPlayerClose();
+        else MF.subs.onPlayerOpen({ type: opts.type, id: opts.id, season: opts.season, episode: opts.episode, title: opts.title || '' });
+      }
       var mine = state;
-      MF.server.streams(opts.type, opts.id, opts.season, opts.episode).then(function (data) {
+      var found = opts.mega ? MF.videos.megaStream(opts.mega) : opts.custom ? MF.server.direct(opts.url) : MF.server.streams(opts.type, opts.id, opts.season, opts.episode);
+      found.then(function (data) {
         if (state !== mine) return;
         if (data.page) { openPage(data.page, opts.resume || 0); return; }
-        if (!data.sources.length) { showError('Your media server has no stream for this title.'); return; }
+        if (!data.sources.length) { showError(opts.custom ? 'This link has no video to play.' : 'Your media server has no stream for this title.'); return; }
         state.pageFallback = data.pageFallback || null;
         state.sources = data.sources;
         state.subtitles = data.subtitles;

@@ -23,7 +23,9 @@
     <button class="tab focusable" data-route="explore"><span data-icon="compass"></span><span class="tab-label">Browse</span></button>
     <button class="tab focusable" data-route="mylist"><span data-icon="bookmark"></span><span class="tab-label">My List</span></button>
     <button class="tab focusable" data-route="watched"><span data-icon="check-circle"></span><span class="tab-label">Watched</span></button>
+    <button class="tab focusable" data-route="videos"><span data-icon="clapper"></span><span class="tab-label">My Videos</span></button>
   </div>
+  <button class="tab tab-profile focusable" id="tab-profile" data-route="account"><span class="rail-icon" data-icon-wrap="1"><span data-icon="user"></span></span><span class="rail-avatar avatar-box hidden"></span><span class="tab-label">Profile</span></button>
   <button class="tab tab-settings focusable" data-route="settings"><span data-icon="gear"></span><span class="tab-label">Settings</span></button>
 </nav>
 <div class="nav-scrim"></div>
@@ -39,6 +41,10 @@
       <h1 class="hero-title" id="hero-title"></h1>
       <div class="hero-meta" id="hero-meta"></div>
       <p class="hero-desc" id="hero-desc"></p>
+      <div class="hero-actions">
+        <button class="btn btn-primary focusable" id="hero-play" type="button"><span data-icon="play"></span>&nbsp; Play</button>
+        <button class="btn focusable" id="hero-more" type="button"><span data-icon="info"></span>&nbsp; More Info</button>
+      </div>
     </div>
   </div>
   <div class="rows scroller" id="rows" data-top-pad="56"></div>
@@ -78,6 +84,51 @@
   <div class="search-side">
     <div class="search-heading" id="search-heading"></div>
     <div class="search-results scroller" id="search-results" data-top-pad="20"></div>
+  </div>
+</section>
+
+<!-- My Videos: links saved by hand -->
+<section id="screen-videos" class="screen">
+  <div class="videos scroller" data-top-pad="120">
+    <h1 class="page-title">My Videos</h1>
+    <p class="settings-note">Your own links. They are saved to your profile and show up on your other devices.</p>
+    <div class="videos-actions">
+      <button class="btn btn-primary focusable" id="videos-add" type="button"><span data-icon="plus"></span>&nbsp; Add video</button>
+    </div>
+    <div class="videos-list" id="videos-list"></div>
+    <div class="videos-empty hidden" id="videos-empty">Nothing saved yet. Add a name and a link and it will play right here.</div>
+  </div>
+</section>
+
+<!-- A MEGA folder: pick what to watch -->
+<section id="screen-mega" class="screen">
+  <div class="videos scroller" data-top-pad="150">
+    <div class="mega-kicker" id="mega-kicker">MEGA</div>
+    <h1 class="page-title" id="mega-title"></h1>
+    <p class="settings-note" id="mega-sub"></p>
+    <div class="mega-status hidden" id="mega-status"></div>
+    <div class="videos-actions hidden" id="mega-retry-wrap"><button class="btn btn-primary focusable" id="mega-retry" type="button">Try again</button></div>
+    <div class="videos-list" id="mega-list"></div>
+  </div>
+</section>
+
+<!-- Add or edit a saved video -->
+<section id="screen-video-edit" class="screen">
+  <div class="pedit">
+    <h1 class="pedit-title" id="vedit-title">Add Video</h1>
+    <div class="vedit-body">
+      <label class="pedit-label" for="vedit-name">Name</label>
+      <input id="vedit-name" class="focusable pedit-input" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Name">
+      <label class="pedit-label vedit-gap" for="vedit-url">Link</label>
+      <input id="vedit-url" class="focusable pedit-input" type="text" maxlength="900" autocomplete="off" spellcheck="false" placeholder="https://">
+      <p class="vedit-kind" id="vedit-kind"></p>
+      <p class="pedit-hint" id="vedit-hint">A video file, a stream (m3u8), a web page with its own player, or a MEGA folder or file link. Tip: long links are easier to add on your phone, they appear here after syncing.</p>
+    </div>
+    <div class="pedit-actions">
+      <button class="btn btn-primary focusable" id="vedit-save" type="button">Save</button>
+      <button class="btn focusable" id="vedit-cancel" type="button">Cancel</button>
+      <button class="btn focusable" id="vedit-delete" type="button">Delete</button>
+    </div>
   </div>
 </section>
 
@@ -139,6 +190,14 @@
       </label>
     </div>
 
+    <div class="settings-group">
+      <div class="settings-group-title">Sync (optional)</div>
+      <label class="field">
+        <span>Sync server address, to share your list and progress between devices</span>
+        <input id="set-sync-server" class="focusable" type="text" autocomplete="off" spellcheck="false" placeholder="https://cineflix-sync.example.workers.dev">
+      </label>
+    </div>
+
     <div class="settings-actions">
       <button class="btn btn-primary focusable" id="set-save">Save</button>
       <button class="btn focusable" id="set-test">Test connections</button>
@@ -149,12 +208,118 @@
   </div>
 </section>
 
+<!-- Profile and sync (its own page, separate from Settings) -->
+<section id="screen-account" class="screen">
+  <div class="settings scroller">
+    <h1 class="page-title">Profile</h1>
+    <p class="settings-note" id="account-note"></p>
+
+    <div class="settings-group" id="account-in">
+      <div class="account-card">
+        <div class="account-face avatar-box" id="account-face"></div>
+        <div class="account-who">
+          <div class="account-name" id="account-name"></div>
+          <div class="account-email" id="account-email"></div>
+          <div class="account-line" id="account-line"></div>
+        </div>
+      </div>
+      <div class="account-actions">
+        <button class="btn focusable" id="account-switch" type="button">Switch profile</button>
+        <button class="btn focusable" id="account-manage" type="button">Manage profiles</button>
+        <button class="btn focusable" id="account-sync" type="button">Sync now</button>
+        <button class="btn focusable" id="account-signout" type="button">Sign out</button>
+      </div>
+    </div>
+
+    <div class="settings-group" id="account-out">
+      <div class="settings-group-title">Sync across your devices</div>
+      <p class="account-text" id="account-text"></p>
+      <div class="account-actions">
+        <button class="btn btn-primary focusable" id="account-signin" type="button">Sign in to sync</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Who's watching -->
+<section id="screen-profiles" class="screen">
+  <div class="profiles-wrap">
+    <h1 class="profiles-title" id="profiles-title">Who's watching?</h1>
+    <div class="profiles-row" id="profiles-row"></div>
+    <div class="profiles-actions">
+      <button class="btn focusable" id="profiles-manage" type="button">Manage profiles</button>
+    </div>
+    <div class="profiles-status" id="profiles-status"></div>
+  </div>
+</section>
+
+<!-- Add or edit a profile -->
+<section id="screen-profile-edit" class="screen">
+  <div class="pedit">
+    <h1 class="pedit-title" id="pedit-title">Edit Profile</h1>
+    <div class="pedit-body">
+      <button class="pedit-avatar focusable" id="pedit-avatar" type="button" aria-label="Change avatar">
+        <div class="avatar-box pedit-face" id="pedit-face"></div>
+        <span class="pedit-pencil"><span data-icon="edit"></span></span>
+      </button>
+      <div class="pedit-fields">
+        <label class="pedit-label" for="pedit-name">Name</label>
+        <input id="pedit-name" class="focusable pedit-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Name">
+        <p class="pedit-hint">Choose the picture to pick a different avatar.</p>
+      </div>
+    </div>
+    <div class="pedit-actions">
+      <button class="btn btn-primary focusable" id="pedit-save" type="button">Save</button>
+      <button class="btn focusable" id="pedit-cancel" type="button">Cancel</button>
+      <button class="btn focusable" id="pedit-delete" type="button">Delete profile</button>
+    </div>
+  </div>
+</section>
+
+<!-- Choose an avatar -->
+<section id="screen-avatars" class="screen">
+  <div class="apick">
+    <h1 class="apick-title">Choose an avatar</h1>
+    <div id="apick-groups"></div>
+  </div>
+</section>
+
+<!-- Sign in with a phone -->
+<section id="screen-signin" class="screen">
+  <div class="signin">
+    <div class="signin-text">
+      <h1>Sign in on your phone</h1>
+      <ol class="signin-steps">
+        <li>Scan the QR code with your phone's camera</li>
+        <li>Sign in to your CineFlix account</li>
+        <li>Enter this code if asked:</li>
+      </ol>
+      <div class="signin-code" id="signin-code"></div>
+      <p class="signin-status" id="signin-status"></p>
+      <div class="signin-actions">
+        <button class="btn focusable" id="signin-cancel" type="button">Cancel</button>
+        <button class="btn focusable" id="signin-retry" type="button">Get a new code</button>
+      </div>
+    </div>
+    <div class="signin-qr-wrap"><img id="signin-qr" class="signin-qr hidden" alt="QR code to sign in"></div>
+  </div>
+</section>
+
+<!-- Dialog -->
+<div class="dialog hidden" id="dialog">
+  <div class="dialog-panel">
+    <h2 class="dialog-title" id="dialog-title"></h2>
+    <div id="dialog-body"></div>
+    <div class="dialog-actions" id="dialog-actions"></div>
+  </div>
+</div>
+
 <!-- Player -->
 <section id="screen-player" class="screen player">
   <video id="video" preload="auto" crossorigin="anonymous"></video>
   <iframe id="page-frame" tabindex="-1" allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" allowfullscreen></iframe>
   <div class="page-hint hidden" id="page-hint">
-    <span class="hint-item"><span class="hint-key">BACK</span>Press twice to return to details</span>
+    <span class="hint-item"><span class="hint-key">BACK</span><span id="page-hint-back">Press twice to return to details</span></span>
     <span class="hint-item hidden" id="page-hint-subs"><span class="hint-key"><i class="hint-dot"></i>YELLOW</span><span class="hint-or">or</span><span class="hint-key">CC</span>Subtitles</span>
   </div>
   <div class="subs-layer" id="subs-layer"></div>
@@ -206,6 +371,12 @@
 <script src="js/cue-font.js"></script>
 <script src="js/subs.js"></script>
 <script src="js/player.js"></script>
+<script src="js/vendor/qrcode.js"></script>
+<script src="js/avatars.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/account.js"></script>
+<script src="js/mega.js"></script>
+<script src="js/videos.js"></script>
 <script src="js/explore.js"></script>
 <script src="js/app.js"></script>
 </body>

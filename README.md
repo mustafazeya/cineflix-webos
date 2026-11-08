@@ -55,7 +55,7 @@ Arrow keys move focus, Enter selects, Esc or Backspace goes back.
 ```bash
 ares-setup-device                          # once: register the TV (see docs/deployment.md)
 cp js/config.local.example.js js/config.local.js    # put your TMDB token and server URL in it
-./package.sh install my-lg-tv              # build, install and launch
+./package.sh install my-lg-tv              # build and install (add --launch to open it)
 ```
 
 `js/config.local.js` is git-ignored and is bundled into the `.ipk` so the TV opens straight to Home.
