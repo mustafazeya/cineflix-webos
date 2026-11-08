@@ -88,6 +88,28 @@
       .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
   }
 
+  // Saved links and MEGA files have no TMDB id: they are searched by a name taken from the file name, which the user can edit.
+  function isTv(ctx) { return ctx.custom ? ctx.kind === 'tv' : ctx.type === 'tv'; }
+
+  var JUNK = /\b(?:480p|576p|720p|1080p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|webrip|web-dl|webdl|hdtv|dvdrip|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|remux|proper|repack)\b/i;
+
+  // "Show.Name.S02E05.1080p.WEB-DL.mkv" -> { query: 'Show Name', kind: 'tv', season: 2, episode: 5 }
+  function guess(name) {
+    var text = String(name || '').replace(/\.[A-Za-z0-9]{2,4}$/, '').replace(/[._]+/g, ' ');
+    var kind = 'movie', season = 0, episode = 0, cuts = [], m;
+    var patterns = [/\bs(\d{1,2})\s*[ -]?\s*e(?:p)?\s*(\d{1,3})\b/i, /\b(\d{1,2})x(\d{2,3})\b/i, /season\s*(\d{1,2})\D{1,14}?episode\s*(\d{1,3})/i];
+    for (var i = 0; i < patterns.length && kind === 'movie'; i++) {
+      if ((m = patterns[i].exec(text))) { season = Number(m[1]); episode = Number(m[2]); kind = 'tv'; cuts.push(m.index); }
+    }
+    if (kind === 'movie' && (m = /\bep(?:isode)?\s*(\d{1,3})\b/i.exec(text))) { season = 1; episode = Number(m[1]); kind = 'tv'; cuts.push(m.index); }
+    if ((m = /\b(?:19|20)\d{2}\b/.exec(text)) && m.index > 2) cuts.push(m.index);
+    if ((m = JUNK.exec(text))) cuts.push(m.index);
+    var end = cuts.length ? Math.min.apply(null, cuts) : text.length;
+    var query = text.slice(0, end).replace(/[\[(][^\])]*[\])]/g, ' ').replace(/[\s\-\u2013:|]+$/, '').replace(/\s+S\d{1,2}$/i, '').replace(/\s+/g, ' ').trim();
+    if (!query) query = text.replace(/\s+/g, ' ').trim().slice(0, 60);
+    return { query: query, kind: kind, season: season, episode: episode };
+  }
+
   // A result is a season pack when SubDL says so, or when it is not for a range that includes this episode.
   function isPack(s, ctx) {
     if (s.full_season) return true;
@@ -119,9 +141,11 @@
   }
 
   function search(ctx, languages) {
-    var q = { api_key: MF.settings.subdlKey.trim(), tmdb_id: ctx.id, type: ctx.type, languages: languages.join(','), subs_per_page: 30 };
+    var q = { api_key: MF.settings.subdlKey.trim(), languages: languages.join(','), subs_per_page: 30 };
+    if (ctx.custom) { q.film_name = ctx.query; q.type = ctx.kind; }
+    else { q.tmdb_id = ctx.id; q.type = ctx.type; }
     // No full_season filter: most episodes only exist inside season packs, which are picked apart on download.
-    if (ctx.type === 'tv') { q.season_number = ctx.season; q.episode_number = ctx.episode; }
+    if (isTv(ctx)) { q.season_number = ctx.season; q.episode_number = ctx.episode; }
     return fetch(apiBase() + '/api/v1/subtitles?' + qs(q), { headers: { Accept: 'application/json' } }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (json) {
         if (json && json.status === false) {
@@ -147,7 +171,7 @@
           // SubDL appends the API key to download links; downloads work without it, so drop it.
           url: String(s.url).replace(/([?&])api_key=[^&]*&?/, '$1').replace(/[?&]$/, ''),
           author: s.author || '',
-          pack: ctx.type === 'tv' && isPack(s, ctx)
+          pack: isTv(ctx) && isPack(s, ctx)
         });
       });
       var order = langList();
@@ -173,7 +197,7 @@
         if (!names.length) throw new Error('No subtitle file inside the download');
         names.sort(function (a, b) { return files[b].length - files[a].length; });
         var pick = names[0];
-        if (ctx.type === 'tv' && names.length > 1) {
+        if (isTv(ctx) && names.length > 1) {
           // Packs hold several episodes: take the file for this one, never a different episode.
           pick = episodeFile(names, files, ctx.season, ctx.episode);
           if (!pick) {
@@ -196,7 +220,7 @@
   var STORE = 'mfc.subs';
 
   function titleKey(ctx) {
-    return ctx.type + ':' + ctx.id + (ctx.type === 'tv' ? ':' + ctx.season + ':' + ctx.episode : '');
+    return ctx.type + ':' + ctx.id + (isTv(ctx) ? ':' + ctx.season + ':' + ctx.episode : '');
   }
   function readAll() { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } }
   function writeAll(all) {
@@ -434,8 +458,22 @@
     var ctx = MF.player.context();
     var focusedKey = keepFocus && MF.nav.current() && MF.nav.current().getAttribute('data-k');
     box.innerHTML = '';
+    box.classList.toggle('has-query', !!(cur && cur.custom));
     box.appendChild(el('div', 'modal-title', 'Subtitles'));
     box.appendChild(el('div', 'modal-sub', (ctx ? ctx.title + ' \u00B7 ' : '') + status()));
+
+    if (cur && cur.custom) {
+      var qrow = el('div', 'subs-query');
+      qrow.appendChild(el('span', 'subs-query-label', 'Search for'));
+      var qin = el('input', 'focusable subs-query-input');
+      qin.id = 'subs-query';
+      qin.type = 'text';
+      qin.value = cur.query || '';
+      qin.setAttribute('autocomplete', 'off');
+      qin.setAttribute('spellcheck', 'false');
+      qrow.appendChild(qin);
+      box.appendChild(qrow);
+    }
 
     var controls = el('div', 'subs-controls');
     var langs = ['ALL'].concat(langList());
@@ -559,6 +597,17 @@
   MF.subs = {
     enabled: enabled,
     uiOpen: function () { return panelOpen; },
+    guess: guess,
+    // Enter in the "Search for" box: search again with what was typed.
+    setQuery: function (text) {
+      var q = String(text || '').trim();
+      if (!cur || !q) return;
+      cur.query = q;
+      var tv = guess(q);
+      if (tv.kind === 'tv' && cur.kind !== 'tv') { cur.kind = 'tv'; cur.season = tv.season; cur.episode = tv.episode; cur.query = tv.query; }
+      autoFocusResult = true;
+      runSearch();
+    },
     openPanel: openPanel,
 
     // Back key: first press in page mode opens the menu; with the menu open, Back closes the player.
@@ -569,6 +618,7 @@
     },
 
     onPlayerOpen: function (ctx) {
+      if (ctx.custom) Object.assign(ctx, guess(ctx.title));
       cur = ctx;
       bridge = { seen: false, pos: 0, at: 0, paused: true };
       clearTrack();

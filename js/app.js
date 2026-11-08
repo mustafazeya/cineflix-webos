@@ -1034,6 +1034,7 @@
     });
     MF.nav.onInputEnter = function (input) {
       if (input.id === 'picker-input') { MF.explore.onInputEnter(); return; }
+      if (input.id === 'subs-query') { input.blur(); MF.subs.setQuery(input.value); return; }
       if (input.id === 'search-input') { clearTimeout(searchTimer); runSearch(input.value, true); }
       else input.blur();
     };

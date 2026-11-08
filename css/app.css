@@ -754,7 +754,10 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
   background: linear-gradient(to top, rgba(0, 0, 0, .9), rgba(0, 0, 0, 0));
 }
 
-.player-progress { display: flex; align-items: center; margin-bottom: 30px; font-size: 24px; color: var(--text2); }
+.player-progress { position: relative; display: flex; align-items: center; margin-bottom: 30px; padding: 18px 0; font-size: 24px; color: var(--text2); }
+/* Time under the pointer (Magic Remote) while hovering or dragging the progress bar. */
+.bar-tip { position: absolute; bottom: 62px; left: 0; transform: translateX(-50%); padding: 6px 14px; border-radius: 6px; background: #fff; color: #000; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; z-index: 2; }
+.bar-tip.hidden { display: none; }
 .player-progress .bar {
   position: relative;
   flex: 1;
@@ -1002,6 +1005,7 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 .subs-controls .chip { margin-bottom: 10px; }
 .subs-now { font-size: 20px; color: var(--text2); margin: 4px 0 14px; }
 .subs-list { position: absolute; top: 250px; left: 0; right: 0; bottom: 0; padding: 0 36px 80px; }
+.subs-box.has-query .subs-list { top: 340px; }
 .subs-msg { padding: 24px 12px; font-size: 24px; color: var(--dim); }
 .subs-lang {
   flex: 0 0 auto;
@@ -1160,3 +1164,9 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 .mega-kicker { margin-bottom: 12px; font-size: 20px; font-weight: 700; letter-spacing: .16em; color: var(--dim); }
 .mega-status { width: 1000px; margin: 40px 0; font-size: 28px; line-height: 1.5; color: var(--text2); }
 .mega-status.bad { color: #ff8a8a; }
+
+/* Subtitle search box for saved links and MEGA files (they are searched by name). */
+.subs-query { display: flex; align-items: center; padding: 0 48px 18px; }
+.subs-query-label { flex: 0 0 auto; margin-right: 20px; font-size: 20px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.subs-query-input { flex: 1; height: 64px; padding: 0 22px; border: 2px solid rgba(255, 255, 255, .22); border-radius: 8px; background: #1a1a1a; color: #fff; font-size: 28px; font-weight: 600; }
+.subs-query-input.focused { border-color: #fff; }

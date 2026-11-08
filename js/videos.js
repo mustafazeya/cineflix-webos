@@ -237,16 +237,23 @@
   function megaStream(ref) {
     var v = MF.store.getVideos().filter(function (x) { return x.id === ref.vid; })[0];
     if (!v) return Promise.reject(new Error('This saved video was removed.'));
-    var base = playerBase();
-    if (!base) return Promise.reject(new Error('MEGA videos need the sync address. Add it in Settings.'));
     return getOpened(v).then(function (op) {
       var node = nodeByHandle(op, ref.h);
       if (!node) throw new Error('That file is no longer in the MEGA folder.');
       return MF.mega.download(MF.mega.parse(v.url), node).then(function (dl) {
-        var json = JSON.stringify({ u: dl.url, k: MF.mega.hex(dl.aesKey), n: MF.mega.hex(dl.nonce), s: dl.size, t: dl.mime, m: node.name })
-          .replace(/[\u0080-\uffff]/g, function (c) { return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4); });
-        var payload = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        return { page: base + '#' + payload, sources: [], subtitles: [] };
+        // The hosted player page is the fallback for files the TV cannot stream itself (not an MP4, an unusual layout).
+        var base = playerBase();
+        var hosted = null;
+        if (base) {
+          var json = JSON.stringify({ u: dl.url, k: MF.mega.hex(dl.aesKey), n: MF.mega.hex(dl.nonce), s: dl.size, t: dl.mime, m: node.name })
+            .replace(/[\u0080-\uffff]/g, function (c) { return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4); });
+          hosted = base + '#' + btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+        if (!/\.(mp4|m4v|mov)$/i.test(node.name)) {
+          if (hosted) return { page: hosted, sources: [], subtitles: [] };
+          throw new Error('This file type needs the sync address. Add it in Settings.');
+        }
+        return { sources: [{ url: dl.url, type: 'mega', mega: dl, quality: '', label: 'MEGA' }], subtitles: [], pageFallback: hosted };
       });
     });
   }

@@ -5,7 +5,7 @@
   var KEY = MF.nav.KEY;
   var HLS_JS = 'js/vendor/hls.min.js';
 
-  var video, ui, frame, state = null, hideTimer = null, hintTimer = null, hintFadeTimer = null, hls = null, hlsLoading = null;
+  var video, ui, frame, state = null, hideTimer = null, hintTimer = null, hintFadeTimer = null, hls = null, hlsLoading = null, megaEngine = null, scrubbing = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -29,6 +29,7 @@
 
   function destroyHls() {
     if (hls) { hls.destroy(); hls = null; }
+    if (megaEngine) { megaEngine.destroy(); megaEngine = null; }
   }
 
   function showUI(focusEl) {
@@ -64,7 +65,16 @@
     state.pendingSeek = startAt || 0;
     if (!forceHls) state.hlsTried = false;
 
-    if (forceHls || needsHlsJs(source)) {
+    if (source.type === 'mega') {
+      // A MEGA file streams into this very <video>, so it has the same controls and subtitles as everything else.
+      megaEngine = MF.megaStream.attach(video, source.mega, { onError: function (msg) { if (state && state.srcIndex === index) showError(msg); } });
+      var engine = megaEngine;
+      engine.ready.catch(function (e) {
+        if (!state || megaEngine !== engine) return;
+        if (e && e.codecs) { showError('This TV cannot play this video (' + e.codecs.join(', ').replace(/video\/mp4; codecs=|audio\/mp4; codecs=|"/g, '') + ').'); return; }
+        failover();
+      });
+    } else if (forceHls || needsHlsJs(source)) {
       loadHlsJs().then(function (Hls) {
         if (!state || state.srcIndex !== index) return;
         if (!Hls.isSupported()) { showError('HLS playback is not supported here.'); return; }
@@ -422,8 +432,8 @@
     $('pbtn-subs').textContent = 'Subtitles: ' + (index < 0 ? 'Off' : state.subtitles[index].label);
   }
 
-  // Subtitle search needs a TMDB title, so it is not offered for links saved by hand.
-  function subsOn() { return !!(MF.subs && MF.subs.enabled() && !(state && state.custom)); }
+  // Saved links and MEGA files search by their name instead of a TMDB id.
+  function subsOn() { return !!(MF.subs && MF.subs.enabled()); }
 
   function save(force) {
     if (!state || state.custom) return;
@@ -469,7 +479,7 @@
 
   function updateBar() {
     var d = video.duration;
-    if (!d || !isFinite(d)) return;
+    if (scrubbing || !d || !isFinite(d)) return;
     var pct = (video.currentTime / d * 100) + '%';
     $('bar-fill').style.width = pct;
     $('bar-knob').style.left = pct;
@@ -588,6 +598,61 @@
       btn.addEventListener('click', function () { onAction(btn.getAttribute('data-act')); });
     });
     $('screen-player').addEventListener('mousemove', function () { if (state && state.mode !== 'page') showUI(MF.nav.current()); });
+    initBarPointer();
+  }
+
+  // Magic Remote: click anywhere on the progress bar to jump there, drag to scrub; the time under the pointer is shown.
+  // While dragging only the bar moves; the video jumps once, when the button is released.
+  function initBarPointer() {
+    var strip = $('player-progress'), bar = $('player-bar'), tip = $('bar-tip');
+    var dragging = false, frac = 0;
+
+    function fraction(e) {
+      var r = bar.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width)));
+    }
+    function overBar(e) {
+      var r = bar.getBoundingClientRect();
+      return e.clientX >= r.left - 8 && e.clientX <= r.right + 8 && e.clientY >= r.top - 26 && e.clientY <= r.bottom + 26;
+    }
+    function usable() { var d = video.duration; return !!(state && state.mode !== 'page' && d && isFinite(d)); }
+    function showTip(f) {
+      var s = strip.getBoundingClientRect(), r = bar.getBoundingClientRect();
+      tip.textContent = MF.ui.fmtTime(f * video.duration);
+      tip.style.left = (r.left - s.left + f * r.width) + 'px';
+      tip.classList.remove('hidden');
+    }
+    function paint(f) {
+      var pct = (f * 100) + '%';
+      $('bar-fill').style.width = pct;
+      $('bar-knob').style.left = pct;
+      $('player-time').textContent = MF.ui.fmtTime(f * video.duration);
+      $('player-dur').textContent = '-' + MF.ui.fmtTime((1 - f) * video.duration);
+    }
+
+    strip.addEventListener('mousedown', function (e) {
+      if (!usable() || !overBar(e)) return;
+      dragging = true;
+      scrubbing = true;
+      frac = fraction(e);
+      MF.nav.focus(bar);
+      paint(frac); showTip(frac); showUI(bar);
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!state) return;
+      if (dragging) { frac = fraction(e); paint(frac); showTip(frac); showUI(bar); return; }
+      if (usable() && ui.classList.contains('visible') && overBar(e)) showTip(fraction(e));
+      else tip.classList.add('hidden');
+    });
+    document.addEventListener('mouseup', function () {
+      if (!dragging) return;
+      dragging = false;
+      scrubbing = false;
+      tip.classList.add('hidden');
+      if (usable()) { video.currentTime = frac * video.duration; showUI(bar); }
+    });
+    strip.addEventListener('mouseleave', function () { if (!dragging) tip.classList.add('hidden'); });
   }
 
   function resetPage() {
@@ -607,8 +672,8 @@
     confirmBack: confirmBack,
     // What is playing, for the subtitle search and its clock.
     context: function () {
-      if (!state || state.custom) return null;
-      return { type: state.type, id: state.id, season: state.season, episode: state.episode, title: state.title || '',
+      if (!state) return null;
+      return { type: state.custom ? 'video' : state.type, custom: !!state.custom, id: state.id, season: state.season, episode: state.episode, title: state.title || '',
         mode: state.mode === 'page' ? 'page' : 'native', currentTime: video ? video.currentTime : 0 };
     },
     onKey: onKey,
@@ -628,10 +693,7 @@
       setSpinner(true);
       showUI($('player-bar'));
 
-      if (MF.subs) {
-        if (opts.custom) MF.subs.onPlayerClose();
-        else MF.subs.onPlayerOpen({ type: opts.type, id: opts.id, season: opts.season, episode: opts.episode, title: opts.title || '' });
-      }
+      if (MF.subs) MF.subs.onPlayerOpen({ type: opts.custom ? 'video' : opts.type, id: opts.id, season: opts.season, episode: opts.episode, title: opts.title || '', custom: !!opts.custom });
       var mine = state;
       var found = opts.mega ? MF.videos.megaStream(opts.mega) : opts.custom ? MF.server.direct(opts.url) : MF.server.streams(opts.type, opts.id, opts.season, opts.episode);
       found.then(function (data) {
