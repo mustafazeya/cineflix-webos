@@ -215,6 +215,11 @@ body.scrolled .hero-bg.show { opacity: .18; }
 /* -- Rows --------------------------------------- */
 
 .rows { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding-top: 640px; padding-bottom: 220px; }
+/* The rows layer covers the whole screen, including the hero buttons under its top padding. It must not catch pointer
+   clicks there; only the rows themselves do. The wheel still scrolls it (see wheelTarget in nav.js). */
+#rows { pointer-events: none; }
+#rows > * { pointer-events: auto; }
+body.scrolled .hero-info { pointer-events: none; }
 .row { position: relative; margin-bottom: 10px; }
 .row-title { font-size: 27px; font-weight: 600; letter-spacing: -.01em; padding-left: var(--left); color: #e6e6e6; }
 .strip {

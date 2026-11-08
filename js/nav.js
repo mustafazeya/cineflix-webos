@@ -278,6 +278,20 @@
     if (keyboardVisible || editing()) return;
     var el = e.target.closest && e.target.closest('.focusable');
     if (el && el !== current && isVisible(el)) focus(el, { noScroll: true });
+    // The side menu stays open while the pointer is over it and closes as soon as the pointer leaves, even when it
+    // rests on empty space (it used to stay open until the pointer happened to land on another button).
+    else if (!el && document.body.classList.contains('nav-open') && !(e.target.closest && e.target.closest('#sidenav'))) closeRail();
+  });
+
+  function closeRail() {
+    if (lastContent && isVisible(lastContent) && document.querySelector('.screen.active').contains(lastContent)) focus(lastContent, { noScroll: true });
+    else {
+      document.body.classList.remove('nav-open');
+      if (current && current.closest('#sidenav')) current.classList.remove('focused');
+    }
+  }
+  document.documentElement.addEventListener('mouseleave', function () {
+    if (document.body.classList.contains('nav-open') && document.body.classList.contains('pointer-mode')) closeRail();
   });
 
   // webOS reports the on-screen keyboard's visibility.

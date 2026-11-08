@@ -338,6 +338,8 @@
         var first = view.container.querySelector('.card');
         if (first && first._item) ui.setHero(first._item);
       }
+      // Coming back from the player: the hero's Play may now need to say Resume (or the other way round).
+      ui.refreshHeroPlay();
     }
   };
 

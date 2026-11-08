@@ -95,10 +95,16 @@
       write(KEYS.progress, all);
     },
 
+    // Progress worth resuming: exactly what the Continue Watching row lists.
+    // Unknown duration means a web-page player without progress reporting: it was started, so keep it.
+    getResumable: function (type, id) {
+      var e = MF.store.getProgress(type, id);
+      return e && (e.position > 30 || e.type === 'tv' || !e.duration) ? e : null;
+    },
+
     continueWatching: function () {
       var all = read(KEYS.progress, {});
       return Object.keys(all).map(function (k) { return all[k]; })
-        // Unknown duration means a web-page player without progress reporting: it was started, so keep it.
         .filter(function (e) { return e.position > 30 || e.type === 'tv' || !e.duration; })
         .sort(function (a, b) { return b.updatedAt - a.updatedAt; })
         .slice(0, 20);

@@ -284,6 +284,23 @@
   var heroTimer = null;
   var heroFull = {};
   var heroShown = null;
+
+  // The hero's main button: Play, or Resume when the title is in Continue Watching.
+  function heroPlayLabel(item) {
+    var p = item && MF.store.getResumable(item.media_type, item.id);
+    if (!p) return 'Play';
+    if (item.media_type === 'tv') return p.finished ? 'Play Next Episode' : 'Resume S' + p.season + ' : E' + p.episode;
+    return p.position > 30 && !p.finished ? 'Resume ' + fmtTime(p.position) : 'Resume';
+  }
+
+  function refreshHeroPlay() {
+    var btn = document.getElementById('hero-play');
+    if (!btn) return;
+    var label = heroPlayLabel(heroShown);
+    if (btn._label === label) return;
+    btn._label = label;
+    btn.innerHTML = MF.icon('play') + '&nbsp; ' + label;
+  }
   function setHero(item, kicker) {
     clearTimeout(heroTimer);
     heroTimer = setTimeout(function () {
@@ -317,6 +334,7 @@
         }
       }
       heroShown = item;
+      refreshHeroPlay();
       document.getElementById('hero-kicker').textContent = kicker || (item.media_type === 'tv' ? 'SERIES' : 'MOVIE');
       applyLogo(item, document.getElementById('hero-logo'), document.getElementById('hero-title'));
       var meta = [];
@@ -387,6 +405,7 @@
     row: row,
     setHero: setHero,
     heroItem: function () { return heroShown; },
+    refreshHeroPlay: refreshHeroPlay,
     setMeta: setMeta,
     toast: toast,
     message: message
