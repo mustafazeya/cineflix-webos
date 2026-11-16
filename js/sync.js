@@ -29,11 +29,11 @@
 
   // { server, token, email, profileId, rev: { profileId: n }, profiles: [cached list] }
   var state = readJson(STATE_KEY, {});
-  // Version 2 added My Videos. Earlier versions skipped those items but still moved their bookmark past them,
-  // so one full re-download is needed to pick up anything saved before the upgrade.
-  if (state.token && (state.schema || 1) < 2) {
+  // Version 2 added My Videos and version 3 added ratings. Earlier versions skipped those items but still moved their bookmark
+  // past them, so one full re-download is needed to pick up anything saved before the upgrade.
+  if (state.token && (state.schema || 1) < 3) {
     state.rev = {};
-    state.schema = 2;
+    state.schema = 3;
     writeJson(STATE_KEY, state);
   }
   var meta = {};            // "kind/key" -> time of the newest edit this device knows about (for the active profile)
@@ -263,7 +263,7 @@
           api('POST', '/v1/pair/poll', { deviceCode: deviceCode }, { server: server, anonymous: true }).then(function (r) {
             if (cancelled) return;
             if (r.status === 'approved') {
-              state = { server: server, token: r.token, email: r.account.email, rev: {}, profiles: [] };
+              state = { server: server, token: r.token, email: r.account.email, rev: {}, profiles: [], schema: 3 };
               saveState();
               finish({ status: 'approved', email: r.account.email });
             } else {
@@ -351,8 +351,10 @@
 
     createProfile: function (fields) { return guard(api('POST', '/v1/profiles', fields)).then(function (p) { return profiles().then(function () { return p; }); }); },
     updateProfile: function (id, fields) { return guard(api('PATCH', '/v1/profiles/' + id, fields)).then(function (p) { return profiles().then(function () { return p; }); }); },
-    deleteProfile: function (id) {
-      return guard(api('DELETE', '/v1/profiles/' + id, {})).then(function () {
+    // 403 bad_pin or 429 when the PIN is wrong or guessed too often; the message is ready to show.
+    verifyPin: function (id, pin) { return guard(api('POST', '/v1/profiles/' + id + '/verify-pin', { pin: pin })); },
+    deleteProfile: function (id, pin) {
+      return guard(api('DELETE', '/v1/profiles/' + id, pin ? { pin: pin } : {})).then(function () {
         MF.store.dropData(id);
         try { localStorage.removeItem(META_KEY + id); localStorage.removeItem(QUEUE_KEY + id); } catch (e) { /* ignore */ }
         return profiles();

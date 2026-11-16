@@ -11,6 +11,7 @@
   var managing = false;
   var pairing = null;
   var dialogReturn = null;
+  var dialogBack = null;
   var lastExitBack = 0;
 
   function initial(name) {
@@ -31,6 +32,17 @@
         veil.appendChild(MF.iconEl('edit'));
         face.appendChild(veil);
       }
+      if (profile.kids || profile.hasPin) {
+        var badges = el('div', 'profile-badges');
+        if (profile.kids) badges.appendChild(el('span', 'profile-kids', 'KIDS'));
+        if (profile.hasPin) {
+          var lock = el('span', 'profile-lock');
+          lock.appendChild(MF.iconEl('lock'));
+          lock.setAttribute('aria-label', 'PIN protected');
+          badges.appendChild(lock);
+        }
+        face.appendChild(badges);
+      }
     } else {
       face.classList.add('profile-add');
       face.appendChild(MF.iconEl('plus'));
@@ -45,10 +57,11 @@
     var row = $('profiles-row');
     row.innerHTML = '';
     list.forEach(function (p) {
-      row.appendChild(tile(p, function () {
+      var t = tile(p, function () {
         if (managing) openEditor(p, list);
-        else chooseProfile(p);
-      }));
+        else chooseProfile(p, t);
+      });
+      row.appendChild(t);
     });
     if (list.length < 5) row.appendChild(tile(null, function () { openEditor(null, list); }));
     $('profiles-title').textContent = managing ? 'Manage profiles' : "Who's watching?";
@@ -68,7 +81,22 @@
     });
   }
 
-  function chooseProfile(profile) {
+  // A profile with a PIN asks for it when it is chosen. Kids profiles open freely; their PIN is asked when leaving them.
+  function chooseProfile(profile, tileEl) {
+    if (profile.hasPin && !profile.kids) {
+      pinDialog({
+        title: 'Enter PIN',
+        text: 'Enter the PIN for ' + profile.name + '.',
+        submit: function (pin) { return MF.sync.verifyPin(profile.id, pin); },
+        onDone: function () { enterProfile(profile); },
+        returnTo: tileEl
+      });
+      return;
+    }
+    enterProfile(profile);
+  }
+
+  function enterProfile(profile) {
     $('profiles-status').textContent = 'Loading ' + profile.name + '...';
     MF.sync.selectProfile(profile.id).then(function () {
       refreshRail();
@@ -110,12 +138,14 @@
     if (cfg.build) cfg.build(body);
     var actions = $('dialog-actions');
     actions.innerHTML = '';
+    actions.classList.toggle('stack', !!cfg.stack);
     cfg.actions.forEach(function (a) {
       var b = el('button', 'btn focusable' + (a.primary ? ' btn-primary' : ''), a.label);
       b.addEventListener('click', function () { closeDialog(true); a.onClick(); });
       actions.appendChild(b);
     });
     dialogReturn = cfg.onCancel || null;
+    dialogBack = cfg.returnTo || null;
     d.classList.remove('hidden');
     document.body.classList.add('dialog-open');
     MF.nav.focus(cfg.focus ? cfg.focus() : actions.querySelector('.btn'));
@@ -124,26 +154,142 @@
   function closeDialog(silent) {
     $('dialog').classList.add('hidden');
     document.body.classList.remove('dialog-open');
+    MF.nav.onDigit = null;
     var cb = dialogReturn;
+    var back = dialogBack;
     dialogReturn = null;
+    dialogBack = null;
+    // Focus goes back to what opened the dialog; whatever runs next may move it on.
+    if (back && document.body.contains(back)) MF.nav.focus(back, { noScroll: true });
     if (!silent && cb) cb();
     var focusTarget = document.querySelector('.screen.active .focusable');
-    if (focusTarget && !silent) MF.nav.focus(focusTarget);
+    if (focusTarget && !silent && !back) MF.nav.focus(focusTarget);
+  }
+
+  // ---------- PIN entry ----------
+
+  function pinError(e) {
+    if (e.status === 403) return 'That PIN is not right. Try again.';
+    return e.message || 'Could not check the PIN';
+  }
+
+  // On-screen number pad that also takes the remote's number keys. submit(pin) returns a promise: when it resolves the dialog
+  // closes and onDone(pin) runs; when it rejects the message is shown and the PIN is cleared. Back cancels.
+  function pinDialog(cfg) {
+    var pin = '';
+    var busy = false;
+    var dots = el('div', 'pin-dots');
+    var msg = el('div', 'pin-msg');
+    var keys = {};
+    var i;
+    for (i = 0; i < 6; i++) dots.appendChild(el('span', 'pin-dot'));
+
+    function render() {
+      Array.prototype.forEach.call(dots.children, function (d, n) { d.classList.toggle('on', n < pin.length); });
+    }
+    function add(digit) {
+      if (busy || pin.length >= 6) return;
+      pin += String(digit);
+      msg.textContent = '';
+      render();
+    }
+    function submit() {
+      if (busy) return;
+      if (pin.length < 4) { msg.textContent = 'Enter 4 to 6 digits'; return; }
+      busy = true;
+      var entered = pin;
+      cfg.submit(entered).then(function () {
+        closeDialog(true);
+        cfg.onDone(entered);
+      }, function (e) {
+        busy = false;
+        pin = '';
+        msg.textContent = pinError(e);
+        render();
+      });
+    }
+
+    openDialog({
+      title: cfg.title,
+      text: cfg.text,
+      returnTo: cfg.returnTo,
+      onCancel: cfg.onCancel,
+      actions: [{ label: 'Cancel', onClick: function () { if (cfg.onCancel) cfg.onCancel(); } }],
+      build: function (body) {
+        body.appendChild(dots);
+        body.appendChild(msg);
+        var pad = el('div', 'pin-pad');
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', 'ok'].forEach(function (k) {
+          var b = el('button', 'key pin-key focusable');
+          b.setAttribute('type', 'button');
+          if (k === 'back') { b.innerHTML = MF.icon('backspace'); b.setAttribute('aria-label', 'Delete'); b.addEventListener('click', function () { if (!busy) { pin = pin.slice(0, -1); render(); } }); }
+          else if (k === 'ok') { b.textContent = 'OK'; b.addEventListener('click', submit); }
+          else { b.textContent = k; b.addEventListener('click', function () { add(k); }); }
+          keys[k] = b;
+          pad.appendChild(b);
+        });
+        body.appendChild(pad);
+      },
+      focus: function () { return keys['5']; }
+    });
+    // Remote number keys type the PIN; OK (the pad's OK key) is then one press away.
+    MF.nav.onDigit = function (d) { add(d); MF.nav.focus(keys.ok, { noScroll: true }); return true; };
+  }
+
+  // Leaving a kids profile (picker, profile page, settings) needs its PIN, if it has one.
+  function leaveKids(next) {
+    var proceed = function () { MF.kids.unlock(); next(); };
+    var from = MF.nav.current();
+    var cached = MF.sync.activeProfile();
+    // The PIN may have been set or removed on another device since the profile list was last loaded.
+    MF.sync.profiles().then(function () {}, function () {}).then(function () {
+      var p = MF.sync.activeProfile() || cached;
+      if (!p || !p.hasPin) { proceed(); return; }
+      pinDialog({
+        title: 'Enter PIN',
+        text: 'Enter the PIN for ' + p.name + ' to leave this kids profile.',
+        submit: function (pin) { return MF.sync.verifyPin(p.id, pin); },
+        onDone: proceed,
+        returnTo: from
+      });
+    });
   }
 
   // ---------- Edit profile and choose an avatar (full-screen pages, like Netflix) ----------
 
-  var draft = null;     // { id, name, avatar, list }
+  // { id, name, avatar, list, kids, maxRating, hasPin, newPin, removePin, currentPin }
+  // newPin / removePin are PIN changes waiting for Save; currentPin is the verified PIN of a profile that already has one.
+  var draft = null;
 
   function openEditor(profile, list) {
-    var used = list.map(function (p) { return p.avatar; });
-    draft = {
-      id: profile ? profile.id : null,
-      name: profile ? profile.name : '',
-      avatar: profile && MF.avatars.has(profile.avatar) ? profile.avatar : MF.avatars.nextFree(used),
-      list: list
+    var open = function (currentPin) {
+      var used = list.map(function (p) { return p.avatar; });
+      draft = {
+        id: profile ? profile.id : null,
+        name: profile ? profile.name : '',
+        avatar: profile && MF.avatars.has(profile.avatar) ? profile.avatar : MF.avatars.nextFree(used),
+        list: list,
+        kids: !!(profile && profile.kids),
+        maxRating: (profile && profile.maxRating) || 'PG',
+        hasPin: !!(profile && profile.hasPin),
+        newPin: undefined,
+        removePin: false,
+        currentPin: currentPin
+      };
+      go('profile-edit');
     };
-    go('profile-edit');
+    // Changing a profile that has a PIN needs the PIN first.
+    if (profile && profile.hasPin) {
+      pinDialog({
+        title: 'Enter PIN',
+        text: 'Enter the PIN for ' + profile.name + ' to change it.',
+        submit: function (pin) { return MF.sync.verifyPin(profile.id, pin); },
+        onDone: open,
+        returnTo: MF.nav.current()
+      });
+      return;
+    }
+    open();
   }
 
   function paintDraftFace() {
@@ -151,13 +297,64 @@
     MF.avatars.paint($('pedit-face'), draft.avatar, def ? def.bg[0] : '#3a3a3a', draft.name);
   }
 
+  function pinState() {
+    if (draft.removePin) return 'removed';
+    if (draft.newPin) return 'set';
+    return draft.hasPin ? 'has' : 'none';
+  }
+
+  function renderOptions() {
+    var kidsPins = pinState();
+    $('pedit-kids').textContent = 'Kids profile: ' + (draft.kids ? 'On' : 'Off');
+    $('pedit-rating').textContent = 'Allow up to: ' + draft.maxRating;
+    $('pedit-rating').classList.toggle('hidden', !draft.kids);
+    $('pedit-pin').textContent = kidsPins === 'has' || kidsPins === 'set' ? 'Change PIN' : 'Set PIN';
+    $('pedit-pin-remove').classList.toggle('hidden', kidsPins !== 'has' && kidsPins !== 'set');
+    var hint = {
+      none: 'No PIN.',
+      has: 'This profile has a PIN.',
+      set: 'The new PIN is saved when you choose Save.',
+      removed: 'The PIN is removed when you choose Save.'
+    }[kidsPins];
+    $('pedit-opts-hint').textContent = (draft.kids
+      ? 'Kids profiles show only titles up to ' + draft.maxRating + ', and hide Browse, My Videos and Settings. Leaving one asks for its PIN. '
+      : 'A PIN asks for a code when this profile is chosen. ') + hint;
+  }
+
+  // Two entries: the PIN, then the same PIN again.
+  function choosePin() {
+    pinDialog({
+      title: draft.hasPin || draft.newPin ? 'New PIN' : 'Choose a PIN',
+      text: 'Use 4 to 6 digits.',
+      submit: function () { return Promise.resolve(); },
+      returnTo: $('pedit-pin'),
+      onDone: function (first) {
+        pinDialog({
+          title: 'Repeat the PIN',
+          text: 'Enter the same PIN again.',
+          submit: function (again) { return again === first ? Promise.resolve() : Promise.reject(new Error('The PINs do not match. Try again.')); },
+          returnTo: $('pedit-pin'),
+          onDone: function () { draft.newPin = first; draft.removePin = false; renderOptions(); }
+        });
+      }
+    });
+  }
+
   function saveDraft() {
     var name = $('pedit-name').value.trim();
     if (!name) { ui.toast('Enter a name'); MF.nav.focus($('pedit-name')); return; }
     var def = MF.avatars.byId(draft.avatar);
-    var fields = { name: name, avatar: draft.avatar, color: def ? def.bg[0] : '#3e63dd' };
-    var p = draft.id ? MF.sync.updateProfile(draft.id, fields) : MF.sync.createProfile(fields);
-    p.then(function () { MF.app.back(); }, function (e) { ui.toast(e.message); });
+    var fields = { name: name, avatar: draft.avatar, color: def ? def.bg[0] : '#3e63dd', kids: draft.kids, maxRating: draft.kids ? draft.maxRating : null };
+    var editing = !!draft.id;
+    if (draft.newPin) fields.pin = draft.newPin;
+    else if (draft.removePin) fields.pin = null;
+    if (editing && fields.pin !== undefined && draft.currentPin) fields.currentPin = draft.currentPin;
+    var p = editing ? MF.sync.updateProfile(draft.id, fields) : MF.sync.createProfile(fields);
+    p.then(function () {
+      var acct = MF.sync.account();
+      if (editing && acct && acct.profileId === draft.id) { refreshRail(); MF.app.invalidate(); }
+      MF.app.back();
+    }, function (e) { ui.toast(e.message); });
   }
 
   function deleteDraft() {
@@ -165,7 +362,7 @@
       title: 'Delete ' + draft.name + '?',
       text: 'Its list and watch history will be removed from every device. This cannot be undone.',
       actions: [
-        { label: 'Delete profile', primary: true, onClick: function () { MF.sync.deleteProfile(draft.id).then(function () { MF.app.back(); }, function (e) { ui.toast(e.message); }); } },
+        { label: 'Delete profile', primary: true, onClick: function () { MF.sync.deleteProfile(draft.id, draft.currentPin).then(function () { MF.app.back(); }, function (e) { ui.toast(e.message); }); } },
         { label: 'Cancel', onClick: function () {} }
       ]
     });
@@ -301,6 +498,14 @@
     $('pedit-cancel').addEventListener('click', function () { MF.app.back(); });
     $('pedit-delete').addEventListener('click', deleteDraft);
     $('pedit-avatar').addEventListener('click', function () { draft.name = $('pedit-name').value; go('avatars'); });
+    $('pedit-kids').addEventListener('click', function () { draft.kids = !draft.kids; renderOptions(); });
+    $('pedit-rating').addEventListener('click', function () {
+      var list = MF.kids.ratings;
+      draft.maxRating = list[(list.indexOf(draft.maxRating) + 1) % list.length];
+      renderOptions();
+    });
+    $('pedit-pin').addEventListener('click', choosePin);
+    $('pedit-pin-remove').addEventListener('click', function () { draft.newPin = undefined; draft.removePin = draft.hasPin; renderOptions(); });
     $('pedit-name').addEventListener('input', function () { draft.name = $('pedit-name').value; paintDraftFace(); });
     $('account-switch').addEventListener('click', function () { go('profiles'); });
     $('account-manage').addEventListener('click', function () { go('profiles', { manage: true }); });
@@ -333,6 +538,8 @@
     face.classList.toggle('hidden', !profile);
     if (profile) MF.avatars.paint(face, profile.avatar, profile.color, profile.name);
     tab.querySelector('.tab-label').textContent = profile ? profile.name : 'Profile';
+    // Kids profiles lose the tabs that show adult content or lead out of the profile (see js/kids.js).
+    document.body.classList.toggle('kids-mode', MF.kids.active());
   }
 
   // ---------- Start-up and Back ----------
@@ -342,12 +549,22 @@
   function startup(goHome) {
     refreshRail();
     if (!MF.sync.signedIn()) { goHome(); return; }
-    if (MF.sync.activeProfile()) {
+    var remembered = MF.sync.activeProfile();
+    // A profile with a PIN is not reopened on launch without it: choosing it in the picker asks for the PIN.
+    if (remembered && remembered.hasPin && !remembered.kids) { go('profiles'); return; }
+    if (remembered) {
       goHome();
+      var before = remembered.kids + ':' + remembered.maxRating;
       // Check in the background that the remembered profile still exists; if not, ask.
       MF.sync.profiles().then(function (fresh) {
         var id = MF.sync.account().profileId;
-        if (fresh.some(function (p) { return p.id === id; })) { refreshRail(); return; }
+        var now = fresh.filter(function (p) { return p.id === id; })[0];
+        if (now) {
+          refreshRail();
+          // Kids settings changed on another device since the last launch: rebuild with the new rules.
+          if (now.kids + ':' + now.maxRating !== before) { MF.app.invalidate(); go('home', {}, { replace: true }); }
+          return;
+        }
         if (fresh.length === 1) { MF.sync.selectProfile(fresh[0].id).then(function () { refreshRail(); MF.app.invalidate(); go('home', {}, { replace: true }); }); }
         else { MF.store.setNamespace(null); go('profiles'); }
       }, function () { /* offline: keep going with the remembered profile */ });
@@ -387,6 +604,8 @@
     init: function () { bind(); renderAccount(); refreshRail(); },
     startup: startup,
     dialog: openDialog,
+    pinDialog: pinDialog,
+    leaveKids: leaveKids,
     handleBack: handleBack,
     renderAccount: renderAccount,
     refreshRail: refreshRail,
@@ -401,6 +620,7 @@
         $('pedit-name').value = draft.name;
         $('pedit-delete').classList.toggle('hidden', isNew || draft.list.length < 2);
         paintDraftFace();
+        renderOptions();
         document.body.classList.add('no-nav');
         MF.nav.focus(restore ? $('pedit-avatar') : (isNew ? $('pedit-name') : $('pedit-avatar')));
       },

@@ -10,8 +10,10 @@ fonts/              Inter (SIL OFL), self-hosted so the TV needs no font downloa
 icons/              app icon, launcher icon, logo marks
 js/config.js        defaults (MF_DEFAULTS)
 js/config.local.js  your private overrides (git-ignored)
-js/store.js         settings, watch progress, My List, watched flags (localStorage)
-js/tmdb.js          TMDB client with response caching
+js/store.js         settings, watch progress, My List, watched flags, episode marks, thumbs ratings (localStorage)
+js/kids.js          kids profile rules: certification filter, blocked genres, which screens a kids profile may open
+js/recs.js          "Because you watched" rows for Home
+js/tmdb.js          TMDB client with response caching (every listing goes through the kids filter)
 js/server.js        client for your media server (streams, catalog, token handling)
 js/nav.js           D-pad spatial navigation and remote key codes
 js/ui.js            cards, rows, hero, toast, skeletons
@@ -35,6 +37,17 @@ Scripts are plain ES5-style files that attach to a global `MF` object. They load
 4. `player.js` plays MP4 or HLS natively, or opens a web page in a frame (see [Player pages](player-pages.md)).
 5. Progress is saved to local storage every few seconds, which drives Continue Watching, resume and the watched state.
 6. `subs.js` listens for the clock from the player and draws the current subtitle line.
+
+## Profiles, kids and ratings
+
+- Per-profile data syncs by kind: `list`, `progress`, `watched`, `episode`, `video` and `rating`. A removal is a tombstone (`deleted`) for the same key.
+  `rating` items use the key `movie:ID` or `tv:ID` and the value `{ id, media_type, title, poster_path, backdrop_path, genre_ids, rating: 1 | -1, ratedAt }`.
+- A kids profile (`kids`, `maxRating` G, PG or PG-13) only gets titles whose US certification is at or below the maximum: movies from `release_dates`,
+  TV from `content_ratings` (TV-Y, TV-Y7 and TV-G count as G, TV-PG as PG, TV-14 as PG-13). Unrated titles are blocked. Searches and lists are filtered by
+  genre first, then checked with one small request per remaining title (cached). Opening a blocked title shows "Not available on this profile".
+- Kids profiles hide Browse, My Videos and Settings, and cannot reach the profile picker or Profile page without the profile's PIN (if it has one).
+  A normal profile with a PIN asks for it when chosen, and on launch. The PIN is checked by the sync server (`verify-pin`); it is never stored on the TV.
+- Press and hold OK (or use the "..." button, or right click) on a Continue Watching card or an episode for its options menu.
 
 ## Navigation
 

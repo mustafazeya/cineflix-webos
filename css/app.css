@@ -425,7 +425,7 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
     linear-gradient(to top, #0b0b0b 6%, rgba(11, 11, 11, 0) 48%);
 }
 .details { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 100px 0 200px; }
-.details-head { padding-left: var(--left); width: 1220px; margin-bottom: 30px; }
+.details-head { padding-left: var(--left); width: 1640px; margin-bottom: 30px; }
 .details-kicker { margin-bottom: 22px; }
 .details-logo {
   display: block;
@@ -461,6 +461,7 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
   -webkit-box-orient: vertical;
 }
 .details-actions { display: flex; margin-bottom: 26px; }
+.details-actions .btn { flex: 0 0 auto; white-space: nowrap; }
 .details-credit { font-size: 20px; color: var(--dim); }
 .season-bar { padding-top: 10px; padding-bottom: 10px; }
 
@@ -1170,3 +1171,54 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 .subs-query-label { flex: 0 0 auto; margin-right: 20px; font-size: 20px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
 .subs-query-input { flex: 1; height: 64px; padding: 0 22px; border: 2px solid rgba(255, 255, 255, .22); border-radius: 8px; background: #1a1a1a; color: #fff; font-size: 28px; font-weight: 600; }
 .subs-query-input.focused { border-color: #fff; }
+
+/* -- Options menu on cards ------------------------------ */
+
+.row-hint { margin-left: 22px; font-size: 18px; font-weight: 500; letter-spacing: 0; color: var(--dim); }
+.card-opts {
+  position: absolute;
+  right: 12px;
+  bottom: 16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .72);
+  color: #fff;
+  z-index: 2;
+}
+.card-opts .ico { width: 24px; height: 24px; }
+.card.focused .card-opts, .card:hover .card-opts { display: flex; }
+.card-opts:hover { background: #fff; color: #000; }
+
+/* -- Kids profiles and PIN ------------------------------ */
+
+body.kids-mode .tab[data-route="explore"],
+body.kids-mode .tab[data-route="videos"],
+body.kids-mode .tab[data-route="settings"] { display: none; }
+
+.profile-badges { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.profile-kids { padding: 5px 12px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 17px; font-weight: 800; letter-spacing: .14em; }
+.profile-lock { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; margin-left: auto; border-radius: 50%; background: rgba(0, 0, 0, .72); color: #fff; }
+.profile-face .profile-lock .ico { width: 22px; height: 22px; }
+
+.pedit-opts { margin-top: 30px; }
+.pedit-opts .btn { height: 68px; margin-right: 16px; background: var(--glass2); border: 2px solid transparent; }
+.pedit-opts .btn.focused { background: #fff; color: #000; }
+.pedit-opts-hint { margin-top: 18px; max-width: 1240px; }
+#screen-profile-edit .pedit { padding-top: 90px; }
+#screen-profile-edit .pedit-title { margin-bottom: 30px; }
+#screen-profile-edit .pedit-actions { margin-top: 30px; }
+
+.pin-dots { display: flex; justify-content: center; gap: 22px; margin: 18px 0 10px; }
+.pin-dot { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .45); }
+.pin-dot.on { background: #fff; border-color: #fff; }
+.pin-msg { min-height: 34px; margin-bottom: 14px; text-align: center; font-size: 23px; color: #ff8a8a; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 120px); gap: 12px; justify-content: center; }
+.pin-pad .key { width: 120px; height: 76px; margin: 0; font-size: 32px; }
+.dialog-panel .pin-pad + .dialog-actions { margin-top: 24px; }
+.dialog-actions.stack { display: flex; flex-direction: column; }
+.dialog-actions.stack .btn { justify-content: center; margin: 0 0 14px; }
+.dialog-actions.stack .btn:last-child { margin-bottom: 0; }

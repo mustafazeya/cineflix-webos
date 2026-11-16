@@ -161,6 +161,40 @@
     return !!best;
   }
 
+  // Press and hold OK on an element that has a _hold function (a card with an options menu) to run it; a short press still clicks.
+  // The click then happens when OK is released, so a long press never also opens the card.
+  var HOLD_MS = 550;
+  var hold = { timer: null, el: null, fired: false, down: false, at: 0 };
+
+  function beginHold() {
+    hold.down = true;
+    hold.fired = false;
+    hold.el = current;
+    hold.at = Date.now();
+    hold.timer = setTimeout(function () {
+      hold.timer = null;
+      hold.fired = true;
+      if (hold.el && document.body.contains(hold.el)) hold.el._hold(hold.el);
+    }, HOLD_MS);
+  }
+
+  document.addEventListener('keyup', function (e) {
+    if (e.keyCode !== KEY.ENTER || !hold.down) return;
+    var el = hold.el;
+    var fired = hold.fired;
+    clearTimeout(hold.timer);
+    hold.timer = null;
+    hold.down = false;
+    hold.el = null;
+    if (!fired && el && document.body.contains(el)) el.click();
+  });
+
+  function digitOf(code) {
+    if (code >= 48 && code <= 57) return code - 48;
+    if (code >= 96 && code <= 105) return code - 96;
+    return null;
+  }
+
   function onKey(e) {
     var code = e.keyCode;
     MF.nav.lastInputAt = Date.now();
@@ -184,7 +218,11 @@
           if (MF.nav.onInputEnter) MF.nav.onInputEnter(document.activeElement);
           return;
         }
+        // Key repeat while OK is held must not click whatever has focus by now (for example a menu that the hold just opened).
+        if (hold.down && Date.now() - hold.at < 800) { hold.at = Date.now(); break; }
+        hold.down = false;
         if (current && current.tagName === 'INPUT') startEditing(current);
+        else if (current && current._hold) beginHold();
         else if (current) current.click();
         break;
       case KEY.BACKSPACE:
@@ -198,6 +236,8 @@
         MF.app.back();
         break;
       default:
+        // Number keys on the remote, for PIN entry.
+        if (!inInput && MF.nav.onDigit && digitOf(code) !== null && MF.nav.onDigit(digitOf(code)) === true) break;
         return;
     }
     e.preventDefault();
@@ -326,6 +366,7 @@
     onStripScroll: null,
     lastInputAt: 0,
     onFocus: null,
-    onInputEnter: null
+    onInputEnter: null,
+    onDigit: null
   };
 })();

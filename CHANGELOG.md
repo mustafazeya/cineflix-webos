@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Continue Watching options menu (press and hold OK, the "..." button, or right click): mark as watched, or remove from Continue Watching
+- Mark a single episode watched or not watched from the season list; Continue Watching follows
+- Thumbs up and thumbs down ratings on the details page, synced as `rating` items
+- "Because you watched" rows on Home (up to two), from titles you rated up or finished
+- Kids profiles with a maximum rating (G, PG, PG-13), kid-safe catalog, search and details, and hidden Browse, My Videos and Settings
+- Profile PIN (4 to 6 digits, number keys or on-screen keypad): asked when choosing a PIN profile, and when leaving a kids profile
 - Voice search: a mic button next to the Search field. It clears the field and opens the TV keyboard, whose voice key dictates into it, and the search runs when the words arrive
 
 ### Fixed

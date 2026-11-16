@@ -13,6 +13,7 @@
     if (!s.tmdbKey) return Promise.reject(new Error('Add your TMDB key in Settings'));
 
     params = Object.assign({ language: s.language }, params || {});
+    if (MF.kids.active()) params.include_adult = false;
     var headers = { Accept: 'application/json' };
     // v4 read access tokens are long JWTs; v3 keys are 32 hex chars.
     if (s.tmdbKey.length > 40) headers.Authorization = 'Bearer ' + s.tmdbKey;
@@ -52,6 +53,11 @@
     return data;
   }
 
+  // A kids profile only ever gets titles that pass the kids filter.
+  function safe(opts) {
+    return function (data) { return MF.kids.filterResults(data, opts); };
+  }
+
   MF.tmdb = {
     clearCache: function () { cache = {}; },
 
@@ -60,25 +66,47 @@
     },
 
     trending: function (type, window_) {
-      return request('/trending/' + (type || 'all') + '/' + (window_ || 'day')).then(tag(type)).then(playable);
+      return request('/trending/' + (type || 'all') + '/' + (window_ || 'day')).then(tag(type)).then(playable).then(safe());
     },
 
     // kind: popular | top_rated | now_playing | upcoming | on_the_air | airing_today
     list: function (type, kind, page) {
-      return request('/' + type + '/' + kind, { page: page || 1, region: MF.settings.region }).then(tag(type)).then(playable);
+      return request('/' + type + '/' + kind, { page: page || 1, region: MF.settings.region }).then(tag(type)).then(playable).then(safe());
     },
 
     discover: function (type, params) {
-      return request('/discover/' + type, Object.assign({ sort_by: 'popularity.desc', 'vote_count.gte': 50 }, params))
-        .then(tag(type)).then(playable);
+      var p = MF.kids.params(type, Object.assign({ sort_by: 'popularity.desc', 'vote_count.gte': 50 }, params));
+      // Movie discover already applies the certification limit for kids; TV discover cannot, so TV is checked title by title.
+      return request('/discover/' + type, p).then(tag(type)).then(playable).then(safe({ trusted: type === 'movie' }));
     },
 
     details: function (type, id) {
       var extra = type === 'movie' ? 'credits,videos,recommendations,release_dates' : 'credits,videos,recommendations,content_ratings';
       return request('/' + type + '/' + id, { append_to_response: extra }).then(function (d) {
         d.media_type = type;
+        MF.kids.verify(type, d);
         if (d.recommendations) tag(type)(d.recommendations);
         return d;
+      });
+    },
+
+    // Just the certification of a title, for checking kid-safety without loading the whole details page.
+    safety: function (type, id) {
+      return request('/' + type + '/' + id, { append_to_response: type === 'movie' ? 'release_dates' : 'content_ratings' });
+    },
+
+    // Titles like this one: TMDB recommendations, topped up with similar titles when there are few.
+    related: function (type, id) {
+      function load(kind) {
+        return request('/' + type + '/' + id + '/' + kind).then(tag(type)).then(playable).then(safe()).then(function (d) { return d.results; }, function () { return []; });
+      }
+      return load('recommendations').then(function (list) {
+        if (list.length >= 8) return list;
+        return load('similar').then(function (more) {
+          var seen = {};
+          list.forEach(function (i) { seen[i.id] = true; });
+          return list.concat(more.filter(function (i) { return !seen[i.id]; }));
+        });
       });
     },
 
@@ -123,7 +151,7 @@
     },
 
     search: function (query) {
-      return request('/search/multi', { query: query, include_adult: false }).then(playable);
+      return request('/search/multi', { query: query, include_adult: false }).then(playable).then(safe());
     },
 
     ping: function () {

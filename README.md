@@ -24,6 +24,9 @@ The iPhone version lives in [cineflix-ios](https://github.com/mustafazeya/cinefl
 - Your own **web player page** can be opened full screen inside the app, with the remote, resume and next episode still working
 - **Subtitle search** from SubDL for the exact movie or episode, kept in step with the real video clock ([details](docs/subtitles.md))
 - Watched tracking (automatic at 95 percent, or manual), per-title My List, everything stored locally on the TV
+- Continue Watching options: press and hold OK on a card to mark it watched or remove it. Mark single episodes watched or not watched the same way
+- Thumbs up and thumbs down on every title, and "Because you watched" rows on Home built from what you liked and finished
+- Kids profiles (needs a CineFlix Sync account): a maximum rating (G, PG or PG-13), family-only catalog and search, no Browse, My Videos or Settings, and an optional PIN to leave. Any profile can also have a PIN
 - Optional server catalog: "Available" badges and a "Recently Added" row for what your server really has
 
 ## Requirements

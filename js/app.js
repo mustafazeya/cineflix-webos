@@ -22,6 +22,7 @@
   }
 
   // style: 'top10' (ranked posters), 'land' (16:9 backdrops) or 'poster' (default)
+  // kind 'because' marks where the "Because you watched" rows go; they load after the rows around them.
   var ROUTE_ROWS = {
     home: function () {
       return [
@@ -29,6 +30,7 @@
         { label: 'Recently Added to Your Library', kind: 'server' },
         { label: 'Top 10 Today', style: 'top10', load: function () { return MF.tmdb.trending('all', 'day'); }, hero: true },
         { label: 'New Releases', style: 'land', load: function () { return MF.tmdb.list('movie', 'now_playing'); } },
+        { kind: 'because' },
         { label: 'Popular Movies', load: function () { return MF.tmdb.list('movie', 'popular'); } },
         { label: 'Popular TV Shows', style: 'land', load: function () { return MF.tmdb.list('tv', 'popular'); } },
         { label: 'New Episodes This Week', load: function () { return MF.tmdb.list('tv', 'on_the_air'); } },
@@ -59,6 +61,53 @@
     }
   };
 
+  // Kids profiles: rows come from family-friendly discover queries. The kids filter in tmdb.js adds the certification limit
+  // (movies) and checks every TV title's content rating.
+  function kidRow(type, label, genres, style) {
+    return { label: label, style: style, load: function () { return MF.tmdb.discover(type, { with_genres: genres }); } };
+  }
+
+  var KID_ROWS = {
+    home: function () {
+      return [
+        { label: 'Continue Watching', kind: 'continue' },
+        { label: 'Recently Added to Your Library', kind: 'server' },
+        Object.assign(kidRow('movie', 'Top 10 Family Movies', '10751|16', 'top10'), { hero: true }),
+        kidRow('tv', 'Kids Shows', '10762', 'land'),
+        { kind: 'because' },
+        kidRow('movie', 'Animated Movies', '16'),
+        kidRow('tv', 'Animated Series', '16', 'land'),
+        kidRow('tv', 'Family Series', '10751'),
+        kidRow('movie', 'Comedy Movies', '35', 'land'),
+        kidRow('movie', 'Adventure Movies', '12')
+      ];
+    },
+    movies: function () {
+      return [
+        { label: 'Movies on Your Server', kind: 'server', type: 'movie' },
+        Object.assign(kidRow('movie', 'Top 10 Family Movies', '10751|16', 'top10'), { hero: true }),
+        kidRow('movie', 'Animated', '16', 'land'),
+        kidRow('movie', 'Family', '10751'),
+        kidRow('movie', 'Comedy', '35', 'land'),
+        kidRow('movie', 'Adventure', '12'),
+        kidRow('movie', 'Fantasy', '14', 'land')
+      ];
+    },
+    tv: function () {
+      return [
+        { label: 'Shows on Your Server', kind: 'server', type: 'tv' },
+        Object.assign(kidRow('tv', 'Top 10 Kids Shows', '10762', 'top10'), { hero: true }),
+        kidRow('tv', 'Animated Series', '16', 'land'),
+        kidRow('tv', 'Family Series', '10751'),
+        kidRow('tv', 'Comedy Series', '35', 'land')
+      ];
+    }
+  };
+
+  function rowsFor(route) {
+    return (MF.kids.active() ? KID_ROWS : ROUTE_ROWS)[route]();
+  }
+
   // ------------------------- Router -------------------------
 
   var TABS = ['home', 'movies', 'tv', 'explore', 'mylist', 'watched', 'videos', 'search', 'settings', 'account'];
@@ -88,6 +137,7 @@
       t.classList.toggle('active', t.getAttribute('data-route') === entry.route);
     });
     MF.nav.handler = entry.route === 'player' ? MF.player.onKey : null;
+    if (!MF.kids.restricted(entry.route)) MF.kids.relock();
     screens[screenName].enter(entry, restoreFocus);
     if (window.focus) window.focus();
   }
@@ -100,6 +150,11 @@
   }
 
   function go(route, params, opts) {
+    // A kids profile cannot open screens that show adult content or lead out of it, until its PIN (if it has one) is entered.
+    if (MF.kids.active() && !MF.kids.isUnlocked() && MF.kids.restricted(route)) {
+      MF.account.leaveKids(function () { go(route === 'account' ? 'profiles' : route, params, opts); });
+      return;
+    }
     var entry = { route: route, params: params || {} };
     leave(top());
     if (TABS.indexOf(route) >= 0 && !(opts && opts.push)) stack = [];
@@ -154,6 +209,15 @@
   // so the page appears complete instead of flashing a loading state.
   var openToken = 0;
   function openItem(item) {
+    if (!MF.kids.active()) { openNow(item); return; }
+    var t = ++openToken;
+    MF.kids.check(item).then(function (ok) {
+      if (t !== openToken) return;
+      if (ok) openNow(item); else ui.toast(MF.kids.MESSAGE, 4000);
+    });
+  }
+
+  function openNow(item) {
     var token = ++openToken;
     var done = false;
     var open = function () {
@@ -215,7 +279,8 @@
           subtitle: sub,
           image: MF.tmdb.img(p.backdrop_path || p.still_path, 'w780'),
           progress: p.duration ? p.position / p.duration : 0,
-          onSelect: function () { resumeEntry(p); }
+          onSelect: function () { resumeEntry(p); },
+          onMenu: function (card) { openContinueMenu(p, card); }
         });
       });
     }
@@ -225,10 +290,88 @@
     return items.map(function (item) { return ui.posterCard(item, openItem); });
   }
 
-  function renderContinue(holder, def) {
-    holder.innerHTML = '';
-    var cards = cardsFor(def, MF.store.continueWatching());
-    if (cards.length) holder.appendChild(ui.row(def.label, cards, 'row-wide'));
+  function renderContinue(holder, def, done) {
+    var token = holder._token = (holder._token || 0) + 1;
+    var entries = MF.store.continueWatching();
+    function show(list) {
+      if (holder._token !== token) return;
+      holder.innerHTML = '';
+      var cards = cardsFor(def, list);
+      if (cards.length) {
+        var row = ui.row(def.label, cards, 'row-wide');
+        row.querySelector('.row-title').appendChild(el('span', 'row-hint', 'Hold OK for options'));
+        holder.appendChild(row);
+      }
+      if (done) done();
+    }
+    if (!MF.kids.active()) { show(entries); return; }
+    MF.kids.filterItems(entries.map(function (e) { return { id: e.id, media_type: e.type }; })).then(function (ok) {
+      var allowed = {};
+      ok.forEach(function (i) { allowed[i.media_type + ':' + i.id] = true; });
+      show(entries.filter(function (e) { return allowed[e.type + ':' + e.id]; }));
+    });
+  }
+
+  // Menu for a Continue Watching card.
+  function openContinueMenu(p, card) {
+    var index = Array.prototype.indexOf.call(card.parentNode.children, card);
+    var item = { id: p.id, media_type: p.type, title: p.title, poster_path: p.poster_path, backdrop_path: p.backdrop_path };
+    var after = function (message) {
+      markContinue();
+      stale.watched = true;
+      ui.toast(message);
+      var view = browseViews[top() && top().route];
+      if (!view || !view.continueHolder) return;
+      renderContinue(view.continueHolder, ROUTE_ROWS.home()[0], function () {
+        var cards = view.continueHolder.querySelectorAll('.card');
+        var next = cards[Math.min(index, cards.length - 1)];
+        if (next) MF.nav.focus(next);
+        else MF.nav.focusFirst('#rows .browse-view[data-route="home"] .focusable');
+      });
+      refreshBecause(view);
+    };
+    MF.account.dialog({
+      title: p.title,
+      text: p.type === 'tv' && p.season ? 'S' + p.season + ' : E' + p.episode : 'Continue Watching',
+      returnTo: card,
+      stack: true,
+      actions: [
+        { label: 'Mark as watched', primary: true, onClick: function () { MF.store.setWatched(item, true); after('Marked as watched'); } },
+        { label: 'Remove from Continue Watching', onClick: function () { MF.store.removeProgress(p.type, p.id); after('Removed from Continue Watching'); } },
+        { label: 'Cancel', onClick: function () {} }
+      ]
+    });
+  }
+
+  // Marks Continue Watching and the "Because you watched" rows for a rebuild the next time Home is shown.
+  function markContinue() {
+    stale.continue = true;
+    stale.because = true;
+  }
+
+  // "Because you watched" rows: load after the main rows, and only redraw when their content changed.
+  function renderBecause(view) {
+    var holder = view.becauseHolder;
+    if (!holder) return;
+    var token = holder._token = (holder._token || 0) + 1;
+    MF.recs.rows().then(function (rows) {
+      if (holder._token !== token) return;
+      var sig = rows.map(function (r) { return r.label + ':' + r.items.map(function (i) { return i.id; }).join(','); }).join('|');
+      if (holder._sig === sig) return;
+      holder._sig = sig;
+      var focused = MF.nav.current();
+      var hadFocus = !!(focused && holder.contains(focused));
+      holder.innerHTML = '';
+      rows.forEach(function (r) {
+        holder.appendChild(ui.row(r.label, r.items.map(function (i) { return ui.posterCard(i, openItem); }), 'row-poster row-because'));
+      });
+      if (hadFocus) MF.nav.focusFirst('#rows .browse-view[data-route="home"] .focusable');
+    }, function () { /* the rows are optional */ });
+  }
+
+  function refreshBecause(view) {
+    stale.because = false;
+    renderBecause(view);
   }
 
   function renderBrowse(route) {
@@ -236,27 +379,32 @@
     container.setAttribute('data-route', route);
     var view = { container: container, heroSet: false, renderedAt: Date.now() };
 
-    if (route === 'watched') {
-      var seen = MF.store.watchedList();
-      if (!seen.length) {
-        ui.message(container, 'Nothing watched yet', 'Finished movies appear here automatically. You can also mark any title with "Watched" on its page.');
-      } else {
-        container.appendChild(ui.row('Already Watched', seen.map(function (i) { return ui.posterCard(i, openItem); }), 'row-grid'));
-        ui.setHero(seen[0], 'WATCHED');
-        view.heroSet = true;
+    // Watched and My List are plain grids of what the profile saved. A kids profile only sees the kid-safe part.
+    function grid(label, saved, kicker, emptyTitle, emptySub) {
+      var slot = null;
+      function render(items) {
+        if (slot) slot.remove();
+        if (!items.length) { ui.message(container, emptyTitle, emptySub); return; }
+        container.appendChild(ui.row(label, items.map(function (i) { return ui.posterCard(i, openItem); }), 'row-grid'));
+        if (!view.heroSet) { ui.setHero(items[0], kicker); view.heroSet = true; }
+        if (slot && top() && top().route === route && MF.nav.lastInputAt <= view.renderedAt) {
+          MF.nav.focusFirst('#rows .browse-view[data-route="' + route + '"] .card');
+        }
       }
+      if (!MF.kids.active() || !saved.length) { render(saved); return; }
+      slot = ui.skeletonRow();
+      container.appendChild(slot);
+      MF.kids.filterItems(saved).then(render);
+    }
+
+    if (route === 'watched') {
+      grid('Already Watched', MF.store.watchedList(), 'WATCHED', 'Nothing watched yet',
+        'Finished movies appear here automatically. You can also mark any title with "Watched" on its page.');
       return view;
     }
 
     if (route === 'mylist') {
-      var list = MF.store.myList();
-      if (!list.length) {
-        ui.message(container, 'Your list is empty', 'Open any title and choose "+ My List" to save it here.');
-      } else {
-        container.appendChild(ui.row('My List', list.map(function (i) { return ui.posterCard(i, openItem); }), 'row-grid'));
-        ui.setHero(list[0], 'MY LIST');
-        view.heroSet = true;
-      }
+      grid('My List', MF.store.myList(), 'MY LIST', 'Your list is empty', 'Open any title and choose "+ My List" to save it here.');
       return view;
     }
 
@@ -267,16 +415,22 @@
       return view;
     }
 
-    ROUTE_ROWS[route]().forEach(function (def) {
+    var loads = [];
+    rowsFor(route).forEach(function (def) {
       if (def.kind === 'continue') {
         view.continueHolder = el('div', 'continue-holder');
         container.appendChild(view.continueHolder);
         renderContinue(view.continueHolder, def);
         return;
       }
+      if (def.kind === 'because') {
+        view.becauseHolder = el('div', 'because-holder');
+        container.appendChild(view.becauseHolder);
+        return;
+      }
       var slot = ui.skeletonRow(def.style);
       container.appendChild(slot);
-      loadRow(def).then(function (data) {
+      loads.push(loadRow(def).then(function (data) {
         var cards = cardsFor(def, data);
         if (!cards.length) { slot.remove(); return; }
         var row = ui.row(def.label, cards, 'row-' + (def.style || 'poster'));
@@ -295,8 +449,11 @@
         slot.remove();
         hideSplash();
         if (def.hero) ui.toast(err.message, 5000);
-      });
+      }).then(function () {}, function () {}));
     });
+    if (view.becauseHolder) {
+      Promise.all(loads).then(function () { stale.because = false; renderBecause(view); });
+    }
     return view;
   }
 
@@ -322,8 +479,9 @@
         rows.appendChild(view.container);
         stale[route] = false;
         restoreFocus = false;
-      } else if (view.continueHolder && stale.continue) {
-        renderContinue(view.continueHolder, ROUTE_ROWS.home()[0]);
+      } else {
+        if (view.continueHolder && stale.continue) renderContinue(view.continueHolder, { label: 'Continue Watching', kind: 'continue' });
+        if (view.becauseHolder && stale.because) refreshBecause(view);
       }
       if (route === 'home') stale.continue = false;
       Array.prototype.forEach.call(rows.children, function (c) {
@@ -490,6 +648,45 @@
     return btn;
   }
 
+  function setEpisodeMark(card, on) {
+    var old = card.querySelector('.watched-mark');
+    if (old) old.remove();
+    card.classList.toggle('is-watched', !!on);
+    if (on) {
+      var w = el('div', 'watched-mark');
+      w.appendChild(MF.iconEl('check'));
+      card.appendChild(w);
+    }
+  }
+
+  // Menu for one episode: mark it watched or not watched. Continue Watching follows (see store.setEpisodeWatched).
+  function openEpisodeMenu(d, season, ep, card) {
+    var on = MF.store.episodeWatched(d.id, season, ep.episode_number);
+    MF.account.dialog({
+      title: ep.episode_number + '. ' + (ep.name || 'Episode ' + ep.episode_number),
+      text: ui.title(d) + '  \u00B7  Season ' + season,
+      returnTo: card,
+      stack: true,
+      actions: [
+        {
+          label: on ? 'Mark as not watched' : 'Mark as watched',
+          primary: true,
+          onClick: function () {
+            MF.store.setEpisodeWatched(d.id, season, ep.episode_number, !on);
+            setEpisodeMark(card, !on);
+            markContinue();
+            var root = $('details');
+            var oldBtn = root.querySelector('.btn-play');
+            if (oldBtn && root._data) oldBtn.parentNode.replaceChild(playButton(root._data), oldBtn);
+            MF.nav.focus(card);
+            ui.toast(on ? 'Marked as not watched' : 'Marked as watched');
+          }
+        },
+        { label: 'Cancel', onClick: function () {} }
+      ]
+    });
+  }
+
   function renderEpisodes(d, wrap, seasonNumber) {
     wrap.innerHTML = '';
     var loading = el('div', 'muted', 'Loading episodes...');
@@ -509,18 +706,16 @@
             if (!MF.server.enabled()) { go('settings'); return; }
             if (MF.server.has('tv', d.id) === false) { ui.toast('Add this show to your media server to play it.'); return; }
             go('player', episodePlayOpts(d, seasonNumber, ep, resume));
-          }
+          },
+          onMenu: function (c) { openEpisodeMenu(d, seasonNumber, ep, c); }
         });
         card._episode = ep;
-        if (MF.store.episodeWatched(d.id, seasonNumber, ep.episode_number)) {
-          var w = el('div', 'watched-mark');
-          w.appendChild(MF.iconEl('check'));
-          card.appendChild(w);
-          card.classList.add('is-watched');
-        }
+        setEpisodeMark(card, MF.store.episodeWatched(d.id, seasonNumber, ep.episode_number));
         return card;
       });
-      wrap.appendChild(ui.row('Season ' + seasonNumber, cards, 'row-wide row-episodes'));
+      var seasonRow = ui.row('Season ' + seasonNumber, cards, 'row-wide row-episodes');
+      seasonRow.querySelector('.row-title').appendChild(el('span', 'row-hint', 'Hold OK on an episode to mark it watched'));
+      wrap.appendChild(seasonRow);
     }, function (err) {
       loading.textContent = err.message;
     });
@@ -617,11 +812,34 @@
         watchedBtn.addEventListener('click', function () {
           var on = MF.store.setWatched(d, !MF.store.isWatched(d.media_type, d.id));
           setWatchedLabel();
-          stale.continue = true;
+          markContinue();
           stale.watched = true;
           ui.toast(on ? 'Marked as watched' : 'Removed from watched');
         });
         actions.appendChild(watchedBtn);
+
+        var upBtn = el('button', 'btn btn-icon focusable');
+        var downBtn = el('button', 'btn btn-icon focusable');
+        var setRatingLabels = function () {
+          var r = MF.store.getRating(d.media_type, d.id);
+          upBtn.innerHTML = MF.icon(r === 1 ? 'thumb-up-fill' : 'thumb-up') + '<span>Like</span>';
+          downBtn.innerHTML = MF.icon(r === -1 ? 'thumb-down-fill' : 'thumb-down') + '<span>Dislike</span>';
+          upBtn.classList.toggle('btn-on', r === 1);
+          downBtn.classList.toggle('btn-on', r === -1);
+          upBtn.setAttribute('aria-pressed', r === 1);
+          downBtn.setAttribute('aria-pressed', r === -1);
+        };
+        var rate = function (value) {
+          var now = MF.store.setRating(d, MF.store.getRating(d.media_type, d.id) === value ? 0 : value);
+          setRatingLabels();
+          stale.because = true;
+          ui.toast(now === 1 ? 'Thumbs up saved' : now === -1 ? 'Thumbs down saved' : 'Rating cleared');
+        };
+        setRatingLabels();
+        upBtn.addEventListener('click', function () { rate(1); });
+        downBtn.addEventListener('click', function () { rate(-1); });
+        actions.appendChild(upBtn);
+        actions.appendChild(downBtn);
         head.appendChild(actions);
 
         var crew = (d.credits && d.credits.crew || []).filter(function (c) { return c.job === 'Director'; }).map(function (c) { return c.name; });
@@ -655,7 +873,8 @@
           }
         }
 
-        var cast = (d.credits && d.credits.cast || []).slice(0, 20);
+        // Cast cards lead to Browse, which a kids profile does not have.
+        var cast = MF.kids.active() ? [] : (d.credits && d.credits.cast || []).slice(0, 20);
         if (cast.length) {
           root.appendChild(ui.row('Cast', cast.map(function (c) {
             var card = el('div', 'person focusable');
@@ -671,7 +890,10 @@
         }
 
         var recs = (d.recommendations && d.recommendations.results || []).filter(function (r) { return r.poster_path; });
-        if (recs.length) root.appendChild(ui.row('More Like This', recs.map(function (r) { return ui.posterCard(r, openItem); })));
+        MF.kids.filterItems(recs).then(function (list) {
+          if (root._data !== d || !list.length) return;
+          root.appendChild(ui.row('More Like This', list.map(function (r) { return ui.posterCard(r, openItem); })));
+        });
 
         if (top() === entry) MF.nav.focusFirst('#details .btn-play');
 
@@ -690,7 +912,7 @@
         root._ready = true;
         root.innerHTML = '';
         root.classList.add('reveal');
-        ui.message(root, 'Could not load this title', err.message, { label: 'Go back', onClick: back });
+        ui.message(root, err.blocked ? MF.kids.MESSAGE : 'Could not load this title', err.blocked ? 'This title is not suitable for this profile.' : err.message, { label: 'Go back', onClick: back });
         if (top() === entry) MF.nav.focusFirst();
       });
     }
@@ -784,7 +1006,7 @@
     },
     leave: function () {
       MF.player.close();
-      stale.continue = true;
+      markContinue();
     }
   };
 
@@ -970,7 +1192,7 @@
     });
     $('set-clear').addEventListener('click', function () {
       MF.store.clearProgress();
-      stale.continue = true;
+      markContinue();
       ui.toast('Watch history cleared');
     });
   }
@@ -1083,7 +1305,7 @@
   // Marks screens for a rebuild after the data behind them changed. full = a different profile or account; otherwise only Continue Watching.
   function invalidate(full) {
     if (full !== false) Object.keys(browseViews).forEach(function (r) { stale[r] = true; });
-    stale.continue = true;
+    markContinue();
   }
 
   MF.app = {

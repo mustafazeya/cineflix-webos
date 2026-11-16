@@ -7,12 +7,13 @@
     mylist: 'mfc.mylist',
     watched: 'mfc.watched',
     episodes: 'mfc.episodes',
-    videos: 'mfc.videos'
+    videos: 'mfc.videos',
+    ratings: 'mfc.ratings'
   };
 
   // Watch data (progress, My List, watched marks) lives in a namespace per profile while signed in to sync.
   // Without an account it uses the plain keys above, exactly as before ("guest").
-  var DATA_KEYS = [KEYS.progress, KEYS.mylist, KEYS.watched, KEYS.episodes, KEYS.videos];
+  var DATA_KEYS = [KEYS.progress, KEYS.mylist, KEYS.watched, KEYS.episodes, KEYS.videos, KEYS.ratings];
   var ns = '';
 
   function scoped(key) {
@@ -38,7 +39,7 @@
     } catch (e) { /* storage full or unavailable */ }
   }
 
-  // Tells the sync layer what changed: kind ('list', 'progress', 'watched', 'episode', 'video'), key, the new value, and whether it was removed.
+  // Tells the sync layer what changed: kind ('list', 'progress', 'watched', 'episode', 'video', 'rating'), key, the new value, and whether it was removed.
   function changed(kind, key, value, deleted) {
     if (MF.store.onChange) MF.store.onChange(kind, key, value, !!deleted);
   }
@@ -110,6 +111,17 @@
         .slice(0, 20);
     },
 
+    // Takes a title out of Continue Watching without marking it watched.
+    removeProgress: function (type, id) {
+      var all = read(KEYS.progress, {});
+      var key = itemKey(type, id);
+      if (!all[key]) return false;
+      delete all[key];
+      write(KEYS.progress, all);
+      changed('progress', key, null, true);
+      return true;
+    },
+
     clearProgress: function () {
       Object.keys(read(KEYS.progress, {})).forEach(function (k) { changed('progress', k, null, true); });
       write(KEYS.progress, {});
@@ -167,6 +179,92 @@
 
     episodeWatched: function (id, season, episode) {
       return !!read(KEYS.episodes, {})[itemKey('tv', id) + ':' + season + ':' + episode];
+    },
+
+    // Marks or unmarks one episode and keeps the show's Continue Watching entry in step: finishing the episode it points at
+    // makes it resume with the next one, and unmarking it makes it resume that episode from the start again.
+    setEpisodeWatched: function (id, season, episode, on) {
+      var key = itemKey('tv', id);
+      var epKey = key + ':' + season + ':' + episode;
+      var eps = read(KEYS.episodes, {});
+      if (on) {
+        eps[epKey] = Date.now();
+        changed('episode', epKey, eps[epKey], false);
+      } else {
+        delete eps[epKey];
+        changed('episode', epKey, null, true);
+      }
+      write(KEYS.episodes, eps);
+      var prog = read(KEYS.progress, {});
+      var cur = prog[key];
+      if (cur && cur.season === season && cur.episode === episode) {
+        if (on && !cur.finished) {
+          cur.finished = true;
+          if (cur.duration) cur.position = cur.duration;
+        } else if (!on && cur.finished) {
+          cur.finished = false;
+          cur.position = 0;
+        } else {
+          return !!on;
+        }
+        cur.updatedAt = Date.now();
+        write(KEYS.progress, prog);
+        changed('progress', key, cur, false);
+      }
+      return !!on;
+    },
+
+    // Shows with at least one finished episode, newest first: [{ id, at, title }].
+    finishedShows: function () {
+      var eps = read(KEYS.episodes, {});
+      var prog = read(KEYS.progress, {});
+      var best = {};
+      Object.keys(eps).forEach(function (k) {
+        var id = Number(k.split(':')[1]);
+        if (id && (!best[id] || eps[k] > best[id])) best[id] = eps[k];
+      });
+      return Object.keys(best).map(function (id) {
+        var p = prog[itemKey('tv', id)];
+        return { id: Number(id), at: best[id], title: p ? p.title : '' };
+      }).sort(function (a, b) { return b.at - a.at; });
+    },
+
+    // ---- Thumbs ratings ----
+    // 1 = thumbs up, -1 = thumbs down, 0 = none.
+    getRating: function (type, id) {
+      var r = read(KEYS.ratings, {})[itemKey(type, id)];
+      return r ? r.rating : 0;
+    },
+
+    // Newest first.
+    ratingsList: function () {
+      var all = read(KEYS.ratings, {});
+      return Object.keys(all).map(function (k) { return all[k]; })
+        .sort(function (a, b) { return (b.ratedAt || 0) - (a.ratedAt || 0); });
+    },
+
+    setRating: function (item, rating) {
+      var all = read(KEYS.ratings, {});
+      var key = itemKey(item.media_type, item.id);
+      if (rating === 1 || rating === -1) {
+        all[key] = {
+          id: item.id,
+          media_type: item.media_type,
+          title: String(item.title || item.name || '').slice(0, 200),
+          poster_path: item.poster_path || null,
+          backdrop_path: item.backdrop_path || null,
+          genre_ids: (item.genre_ids || (item.genres || []).map(function (g) { return g.id; })).slice(0, 12),
+          rating: rating,
+          ratedAt: Date.now()
+        };
+        changed('rating', key, all[key], false);
+      } else {
+        delete all[key];
+        changed('rating', key, null, true);
+        rating = 0;
+      }
+      write(KEYS.ratings, all);
+      return rating;
     },
 
     toggleMyList: function (item) {
@@ -237,8 +335,8 @@
         if (!deleted && value) vids.push(value);
         vids.sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
         write(KEYS.videos, vids);
-      } else if (kind === 'progress' || kind === 'watched' || kind === 'episode') {
-        var name = kind === 'progress' ? KEYS.progress : kind === 'watched' ? KEYS.watched : KEYS.episodes;
+      } else if (kind === 'progress' || kind === 'watched' || kind === 'episode' || kind === 'rating') {
+        var name = { progress: KEYS.progress, watched: KEYS.watched, episode: KEYS.episodes, rating: KEYS.ratings }[kind];
         var map = read(name, {});
         if (deleted) delete map[key]; else map[key] = value;
         write(name, map);
@@ -262,6 +360,8 @@
       Object.keys(watched).forEach(function (k) { out.push({ kind: 'watched', key: k, value: watched[k], updatedAt: watched[k].watchedAt || now }); });
       var eps = readRaw(KEYS.episodes + suffix, {});
       Object.keys(eps).forEach(function (k) { out.push({ kind: 'episode', key: k, value: eps[k], updatedAt: eps[k] || now }); });
+      var ratings = readRaw(KEYS.ratings + suffix, {});
+      Object.keys(ratings).forEach(function (k) { out.push({ kind: 'rating', key: k, value: ratings[k], updatedAt: ratings[k].ratedAt || now }); });
       return out;
     },
 

@@ -237,7 +237,19 @@
     }
     if (opts.item) badge(opts.item, card);
     card.addEventListener('click', opts.onSelect);
+    if (opts.onMenu) attachMenu(card, opts.onMenu);
     return card;
+  }
+
+  // Options menu on a card: press and hold OK (remote), the "..." button on the focused card (pointer), or right click.
+  function attachMenu(card, onMenu) {
+    card._hold = function () { onMenu(card); };
+    var btn = el('div', 'card-opts');
+    btn.setAttribute('aria-label', 'Options');
+    btn.appendChild(MF.iconEl('more'));
+    btn.addEventListener('click', function (e) { e.stopPropagation(); MF.nav.focus(card, { noScroll: true }); onMenu(card); });
+    card.appendChild(btn);
+    card.addEventListener('contextmenu', function (e) { e.preventDefault(); onMenu(card); });
   }
 
   function updateArrows(strip) {
@@ -402,6 +414,7 @@
     loadGenres: loadGenres,
     genreList: genreList,
     wideCard: wideCard,
+    attachMenu: attachMenu,
     row: row,
     setHero: setHero,
     heroItem: function () { return heroShown; },
