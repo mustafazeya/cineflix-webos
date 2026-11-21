@@ -29,16 +29,18 @@
 
   // { server, token, email, profileId, rev: { profileId: n }, profiles: [cached list] }
   var state = readJson(STATE_KEY, {});
-  // Version 2 added My Videos and version 3 added ratings. Earlier versions skipped those items but still moved their bookmark
-  // past them, so one full re-download is needed to pick up anything saved before the upgrade.
-  if (state.token && (state.schema || 1) < 3) {
+  // Version 2 added My Videos, version 3 ratings and version 4 saved playback positions ('resume'). Earlier versions skipped
+  // those items but still moved their bookmark past them, so one full re-download is needed to pick up anything saved before the upgrade.
+  var SCHEMA = 4;
+  if (state.token && (state.schema || 1) < SCHEMA) {
     state.rev = {};
-    state.schema = 3;
+    state.schema = SCHEMA;
     writeJson(STATE_KEY, state);
   }
   var meta = {};            // "kind/key" -> time of the newest edit this device knows about (for the active profile)
   var queue = {};           // "kind/key" -> change waiting to be sent (for the active profile)
   var flushTimer = null;
+  var flushQueued = false;
   var pullTimer = null;
   var busy = false;
   var info = { lastSync: 0, error: '', pending: 0 };
@@ -123,16 +125,19 @@
     queue[k] = { kind: kind, key: key, value: deleted ? null : slim(kind, value), deleted: !!deleted, updatedAt: t };
     saveMeta();
     saveQueue();
-    scheduleFlush(FLUSH_DELAY);
+    // A change that keeps coming in (the playback position) must not push the send back for as long as it plays.
+    if (!flushQueued) scheduleFlush(FLUSH_DELAY);
   }
 
   function scheduleFlush(delay) {
     clearTimeout(flushTimer);
+    flushQueued = true;
     flushTimer = setTimeout(flush, delay);
   }
 
   function flush() {
     clearTimeout(flushTimer);
+    flushQueued = false;
     var keys = Object.keys(queue);
     if (!active() || busy || !keys.length) return Promise.resolve();
     busy = true;
@@ -210,6 +215,7 @@
   function stopTimers() {
     clearInterval(pullTimer);
     clearTimeout(flushTimer);
+    flushQueued = false;
     pullTimer = null;
   }
 
@@ -263,7 +269,7 @@
           api('POST', '/v1/pair/poll', { deviceCode: deviceCode }, { server: server, anonymous: true }).then(function (r) {
             if (cancelled) return;
             if (r.status === 'approved') {
-              state = { server: server, token: r.token, email: r.account.email, rev: {}, profiles: [], schema: 3 };
+              state = { server: server, token: r.token, email: r.account.email, rev: {}, profiles: [], schema: SCHEMA };
               saveState();
               finish({ status: 'approved', email: r.account.email });
             } else {

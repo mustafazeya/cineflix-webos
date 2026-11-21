@@ -8,12 +8,13 @@
     watched: 'mfc.watched',
     episodes: 'mfc.episodes',
     videos: 'mfc.videos',
-    ratings: 'mfc.ratings'
+    ratings: 'mfc.ratings',
+    resume: 'mfc.resume'
   };
 
   // Watch data (progress, My List, watched marks) lives in a namespace per profile while signed in to sync.
   // Without an account it uses the plain keys above, exactly as before ("guest").
-  var DATA_KEYS = [KEYS.progress, KEYS.mylist, KEYS.watched, KEYS.episodes, KEYS.videos, KEYS.ratings];
+  var DATA_KEYS = [KEYS.progress, KEYS.mylist, KEYS.watched, KEYS.episodes, KEYS.videos, KEYS.ratings, KEYS.resume];
   var ns = '';
 
   function scoped(key) {
@@ -39,7 +40,7 @@
     } catch (e) { /* storage full or unavailable */ }
   }
 
-  // Tells the sync layer what changed: kind ('list', 'progress', 'watched', 'episode', 'video', 'rating'), key, the new value, and whether it was removed.
+  // Tells the sync layer what changed: kind ('list', 'progress', 'watched', 'episode', 'video', 'rating', 'resume'), key, the new value, and whether it was removed.
   function changed(kind, key, value, deleted) {
     if (MF.store.onChange) MF.store.onChange(kind, key, value, !!deleted);
   }
@@ -321,6 +322,62 @@
     removeVideo: function (id) {
       write(KEYS.videos, read(KEYS.videos, []).filter(function (x) { return x.id !== id; }));
       changed('video', id, null, true);
+      // Saved positions of a deleted link go with it.
+      var all = read(KEYS.resume, {});
+      Object.keys(all).forEach(function (k) {
+        if (k === 'v:' + id || k.indexOf('m:' + id + ':') === 0) { delete all[k]; changed('resume', k, null, true); }
+      });
+      write(KEYS.resume, all);
+    },
+
+    // ---- Playback position of My Videos and MEGA files ----
+    // Key 'v:<videoId>' for a saved link, 'm:<videoId>:<nodeId>' for a file inside a saved MEGA link. A key must match
+    // /^[A-Za-z0-9:._-]{1,64}$/; a part that is too long or has other characters becomes an 8-digit hex FNV-1a hash of itself.
+    resumeKey: function (videoId, nodeId) {
+      var ok = function (k) { return /^[A-Za-z0-9:._-]{1,64}$/.test(k); };
+      var hash = function (t) {
+        var h = 0x811c9dc5;
+        for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
+        return ('00000000' + h.toString(16)).slice(-8);
+      };
+      videoId = String(videoId);
+      if (nodeId === undefined || nodeId === null) {
+        var k1 = 'v:' + videoId;
+        return ok(k1) ? k1 : 'v:' + hash(videoId);
+      }
+      nodeId = String(nodeId);
+      var k2 = 'm:' + videoId + ':' + nodeId;
+      if (ok(k2)) return k2;
+      k2 = 'm:' + videoId + ':' + hash(nodeId);
+      return ok(k2) ? k2 : 'm:' + hash(videoId) + ':' + hash(nodeId);
+    },
+
+    // The saved position worth resuming from (after 10 s, and not in the last 15 s), or null.
+    getResume: function (key) {
+      var e = read(KEYS.resume, {})[key];
+      if (!e || !(e.position > 10)) return null;
+      if (e.duration > 0 && e.position >= e.duration - 15) return null;
+      return e;
+    },
+
+    // Remembers where playback is. Under 10 s nothing is saved; past 95% the video counts as finished and the entry is removed.
+    setResume: function (key, position, duration, title) {
+      if (!key || !(position >= 10)) return;
+      if (duration > 0 && position / duration > 0.95) { MF.store.clearResume(key); return; }
+      var all = read(KEYS.resume, {});
+      var entry = { key: key, position: Math.floor(position), duration: Math.floor(duration || 0), title: String(title || '').slice(0, 120), updatedAt: Date.now() };
+      all[key] = entry;
+      write(KEYS.resume, all);
+      changed('resume', key, entry, false);
+    },
+
+    clearResume: function (key) {
+      var all = read(KEYS.resume, {});
+      if (!all[key]) return false;
+      delete all[key];
+      write(KEYS.resume, all);
+      changed('resume', key, null, true);
+      return true;
     },
 
     // Applies a change that came from another device. It does not call onChange, so it is not sent back.
@@ -335,8 +392,8 @@
         if (!deleted && value) vids.push(value);
         vids.sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
         write(KEYS.videos, vids);
-      } else if (kind === 'progress' || kind === 'watched' || kind === 'episode' || kind === 'rating') {
-        var name = { progress: KEYS.progress, watched: KEYS.watched, episode: KEYS.episodes, rating: KEYS.ratings }[kind];
+      } else if (kind === 'progress' || kind === 'watched' || kind === 'episode' || kind === 'rating' || kind === 'resume') {
+        var name = { progress: KEYS.progress, watched: KEYS.watched, episode: KEYS.episodes, rating: KEYS.ratings, resume: KEYS.resume }[kind];
         var map = read(name, {});
         if (deleted) delete map[key]; else map[key] = value;
         write(name, map);
@@ -362,6 +419,8 @@
       Object.keys(eps).forEach(function (k) { out.push({ kind: 'episode', key: k, value: eps[k], updatedAt: eps[k] || now }); });
       var ratings = readRaw(KEYS.ratings + suffix, {});
       Object.keys(ratings).forEach(function (k) { out.push({ kind: 'rating', key: k, value: ratings[k], updatedAt: ratings[k].ratedAt || now }); });
+      var resume = readRaw(KEYS.resume + suffix, {});
+      Object.keys(resume).forEach(function (k) { out.push({ kind: 'resume', key: k, value: resume[k], updatedAt: resume[k].updatedAt || now }); });
       return out;
     },
 

@@ -21,5 +21,7 @@ window.MF_DEFAULTS = {
   syncServer: '',
   trailerPage: 'https://www.zeyamustafa.online/movies/trailer.html',
   serverToken: '',
-  refreshMinutes: 60
+  refreshMinutes: 60,
+  // Play the next episode on its own after a 10 second countdown. Kept per device, never synced.
+  autoplayNext: true
 };

@@ -541,9 +541,10 @@
     return (episodes || []).filter(function (e) { return !e.air_date || e.air_date <= today; });
   }
 
-  // Builds a "next episode" resolver for the player.
+  // Builds a "next episode" resolver for the player: the next aired episode, the first of the next season after the last
+  // episode of a season, or null after the last episode of the series (and on a kids profile that may not see the show).
   function nextEpisodeFn(d, season, episode) {
-    return function () {
+    function find() {
       return MF.tmdb.season(d.id, season).then(function (s) {
         var eps = aired(s.episodes);
         var idx = -1;
@@ -557,6 +558,13 @@
           return first ? episodePlayOpts(d, nextSeason.season_number, first, 0) : null;
         });
       });
+    }
+    return function () {
+      return find().then(function (opts) {
+        if (!opts) return null;
+        var item = { media_type: 'tv', id: d.id, adult: d.adult, genre_ids: (d.genres || []).map(function (g) { return g.id; }) };
+        return MF.kids.check(item).then(function (ok) { return ok ? opts : null; });
+      });
     };
   }
 
@@ -568,6 +576,7 @@
       subtitle: 'S' + season + ' : E' + ep.episode_number + '  ' + (ep.name || ''),
       season: season,
       episode: ep.episode_number,
+      episodeName: ep.name || '',
       backdrop_path: d.backdrop_path,
       poster_path: d.poster_path,
       still_path: ep.still_path,
@@ -1130,6 +1139,7 @@
 
   var STREAM_TYPES = [['auto', 'Detect automatically'], ['page', 'Web page with its own player'], ['video', 'Video file / HLS stream']];
   var pendingStreamType = 'auto';
+  var pendingAutoplay = true;
 
   function renderStreamType() {
     var label = STREAM_TYPES.filter(function (t) { return t[0] === pendingStreamType; })[0] || STREAM_TYPES[0];
@@ -1137,11 +1147,18 @@
     $('set-stream-type').appendChild(MF.iconEl('cycle'));
   }
 
+  function renderAutoplay() {
+    $('set-autoplay').textContent = (pendingAutoplay ? 'On' : 'Off') + '  ';
+    $('set-autoplay').appendChild(MF.iconEl('cycle'));
+  }
+
   screens.settings = {
     enter: function () {
       Object.keys(FIELDS).forEach(function (id) { $(id).value = MF.settings[FIELDS[id]] || ''; });
       pendingStreamType = MF.settings.streamType || 'auto';
       renderStreamType();
+      pendingAutoplay = MF.settings.autoplayNext !== false;
+      renderAutoplay();
       $('settings-note').textContent = MF.settings.tmdbKey
         ? 'Metadata comes from TMDB. Videos play only from the media server you configure.'
         : 'Start by adding your TMDB key. Videos play only from the media server you configure.';
@@ -1158,6 +1175,7 @@
     patch.region = patch.region.toUpperCase();
     patch.subLangs = (patch.subLangs || '').toUpperCase().replace(/[^A-Z,]+/g, ',').replace(/^,+|,+$/g, '') || 'EN';
     patch.streamType = pendingStreamType;
+    patch.autoplayNext = pendingAutoplay;
     return patch;
   }
 
@@ -1173,6 +1191,12 @@
       var i = STREAM_TYPES.map(function (t) { return t[0]; }).indexOf(pendingStreamType);
       pendingStreamType = STREAM_TYPES[(i + 1) % STREAM_TYPES.length][0];
       renderStreamType();
+    });
+    // Applies at once, so it does not depend on pressing Save.
+    $('set-autoplay').addEventListener('click', function () {
+      pendingAutoplay = !pendingAutoplay;
+      MF.store.saveSettings({ autoplayNext: pendingAutoplay });
+      renderAutoplay();
     });
     $('set-save').addEventListener('click', function () {
       applySettings();

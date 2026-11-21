@@ -800,6 +800,35 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 #pbtn-next { margin-left: auto; margin-right: 0; background: rgba(255, 255, 255, .9); color: #000; }
 #pbtn-next.focused { background: #fff; }
 
+/* Next episode card: bottom right over the video, lifted above the controls while they are showing */
+.next-card {
+  position: absolute;
+  right: var(--pad);
+  bottom: 110px;
+  z-index: 5;
+  display: flex;
+  width: 820px;
+  padding: 20px;
+  border-radius: 14px;
+  background: rgba(20, 20, 20, .94);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .08);
+  transition: bottom .3s;
+}
+.player-ui.visible ~ .next-card { bottom: 290px; }
+.next-thumb { flex: 0 0 300px; height: 169px; border-radius: 8px; overflow: hidden; background: #2a2a2a; }
+.next-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.next-thumb.empty img { display: none; }
+.next-body { flex: 1; min-width: 0; margin-left: 24px; display: flex; flex-direction: column; }
+.next-label { font-size: 19px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text2); }
+.next-title { margin-top: 6px; font-size: 28px; font-weight: 700; line-height: 1.2; max-height: 68px; overflow: hidden; }
+.next-count { margin-top: 12px; }
+.next-count-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+.next-count-fill { height: 100%; width: 100%; background: var(--accent); }
+.next-count-text { margin-top: 8px; font-size: 21px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.next-actions { display: flex; margin-top: auto; padding-top: 12px; }
+.next-actions .btn { height: 56px; padding: 0 26px; margin-right: 12px; font-size: 22px; }
+.next-actions .btn:last-child { margin-right: 0; }
+
 .player-spinner {
   position: absolute;
   top: 50%;
@@ -1160,6 +1189,12 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
 .vrow-play.focused .vrow-tag { background: rgba(0, 0, 0, .12); color: #000; }
 .vrow-count { flex: 0 0 auto; margin-left: 24px; font-size: 22px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .vrow-play.focused .vrow-count { color: #333; }
+.vrow-play { position: relative; overflow: hidden; }
+.vrow-resume { flex: 0 0 auto; margin-left: 24px; font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.vrow-play.focused .vrow-resume { color: #b00d1a; }
+.vrow-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(255, 255, 255, .22); }
+.vrow-play.focused .vrow-prog { background: rgba(0, 0, 0, .18); }
+.vrow-prog-fill { height: 100%; background: var(--accent); }
 .vrow-folder .ico { color: #f0b429; }
 .vrow-play.focused.vrow-folder .ico { color: #8a5d00; }
 .mega-kicker { margin-bottom: 12px; font-size: 20px; font-weight: 700; letter-spacing: .16em; color: var(--dim); }

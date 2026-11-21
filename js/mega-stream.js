@@ -235,6 +235,7 @@
               tracks.push(rec);
               mp4.setSegmentOptions(w.t.id, rec, { nbSamples: Math.max(1, Math.round(rate * 4)) });
               sb.addEventListener('updateend', function () {
+                if (dead) return;
                 if (rec.wantClear) { rec.wantClear = false; try { sb.remove(0, Number(ms.duration) || 1e9); } catch (e2) { /* nothing buffered */ } return; }
                 drain(rec); trim(); finish(); pump();
               });

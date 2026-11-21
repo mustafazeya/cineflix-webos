@@ -58,7 +58,47 @@
 
   function playVideo(v) {
     if (isMega(v)) { startMega(v); return; }
-    go('player', { type: 'video', id: v.id, title: v.name, subtitle: host(v.url), url: v.url, custom: true, resume: 0 });
+    go('player', { type: 'video', id: v.id, title: v.name, subtitle: host(v.url), url: v.url, custom: true, resumeKey: MF.store.resumeKey(v.id) });
+  }
+
+  // The file a saved MEGA link points at directly (a file link, or a folder link that names one file), or null for a folder.
+  function megaFileOf(v) {
+    var link = MF.mega.parse(v.url);
+    if (!link) return null;
+    return link.type === 'file' ? link.id : (link.subType === 'file' ? link.sub : null);
+  }
+
+  function resumeKeyOf(v) {
+    if (!isMega(v)) return MF.store.resumeKey(v.id);
+    var h = megaFileOf(v);
+    return h ? MF.store.resumeKey(v.id, h) : null;
+  }
+
+  // Adds the "Resume 12:34" label and a thin progress bar to a row that has a saved position, and the Start over action
+  // (press and hold OK, or right click) that forgets it.
+  function decorateResume(btn, key, title, onChanged) {
+    var r = key ? MF.store.getResume(key) : null;
+    if (!r) return;
+    btn.classList.add('has-resume');
+    btn.appendChild(el('span', 'vrow-resume', 'Resume ' + ui.fmtTime(r.position)));
+    var bar = el('div', 'vrow-prog');
+    var fill = el('div', 'vrow-prog-fill');
+    fill.style.width = (r.duration > 0 ? Math.max(2, Math.min(100, r.position / r.duration * 100)) : 0) + '%';
+    bar.appendChild(fill);
+    btn.appendChild(bar);
+    var ask = function () {
+      MF.account.dialog({
+        title: 'Start over?',
+        text: title + ' will play from the beginning next time.',
+        returnTo: btn,
+        actions: [
+          { label: 'Start over', primary: true, onClick: function () { MF.store.clearResume(key); ui.toast('Starting over next time'); onChanged(); } },
+          { label: 'Cancel', onClick: function () {} }
+        ]
+      });
+    };
+    btn._hold = ask;
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); ask(); });
   }
 
   // ---------- The list ----------
@@ -80,6 +120,7 @@
       text.appendChild(el('div', 'vrow-host', isMega(v) ? megaLabel(v.url) : host(v.url)));
       play.appendChild(text);
       if (isMega(v)) play.appendChild(el('span', 'vrow-tag', 'MEGA'));
+      decorateResume(play, resumeKeyOf(v), v.name, function () { MF.videos.refresh(); });
       play.addEventListener('click', function () { playVideo(v); });
       var edit = el('button', 'vrow-edit focusable');
       edit.setAttribute('data-id', v.id);
@@ -216,7 +257,7 @@
   function megaPlayOpts(v, op, node) {
     return {
       type: 'video', id: node.h, title: stripExt(node.name), subtitle: crumbs(op, node.p || null, v.name).join('  \u00B7  '),
-      custom: true, mega: { vid: v.id, h: node.h }, resume: 0,
+      custom: true, mega: { vid: v.id, h: node.h }, resumeKey: MF.store.resumeKey(v.id, node.h),
       next: function () {
         var sibs = playableSiblings(op, node.p);
         var at = -1;
@@ -292,6 +333,7 @@
     var side = node.isDir ? MF.mega.videoCount(op, node.h) + ' videos' : fmtSize(node.size);
     var count = el('span', 'vrow-count', side);
     btn.appendChild(count);
+    if (!node.isDir) decorateResume(btn, MF.store.resumeKey(v.id, node.h), stripExt(node.name), function () { megaFocus = node.h; if (megaView) showFolder(megaView.v, megaView.folder, true); });
     btn.addEventListener('click', function () {
       if (node.isDir) go('mega-browse', { vid: v.id, folder: node.h });
       else go('player', megaPlayOpts(v, op, node));
@@ -325,6 +367,7 @@
       if (!items.length) { setStatus('No videos found here. ' + (folder ? '' : MF.mega.inventory(op)), false); return; }
       setStatus('', false);
       items.forEach(function (n) { holder.appendChild(megaRow(n, op, v)); });
+      if (holder.querySelector('.has-resume')) $('mega-sub').textContent += (items.length ? '  \u00B7  ' : '') + 'Hold OK on a Resume row to start over';
       var target = restore && megaFocus ? holder.querySelector('[data-h="' + megaFocus + '"]') : null;
       MF.nav.focus(target || holder.querySelector('.vrow-play'));
     }, function (e) {

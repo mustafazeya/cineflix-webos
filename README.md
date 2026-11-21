@@ -20,7 +20,9 @@ The iPhone version lives in [cineflix-ios](https://github.com/mustafazeya/cinefl
 - **Voice search**: a mic button in Search opens the TV keyboard, and the spoken words run the search
 - **Browse** with filters: movies or TV, sort, genre, year or decade, actor, minimum rating, hide watched. Endless scrolling
 - Details page with rating, runtime, certification, cast, trailer, More Like This, and season and episode browsing
+- My Videos and MEGA files remember where you stopped, per profile and synced across devices: they resume there, show a progress bar and `Resume 12:34`, and hold OK on a row to start over
 - Player for MP4 and HLS with resume, Continue Watching, auto next episode, quality switching and remote media keys
+- **Next Episode card** for series and MEGA folders: the next episode is looked up as soon as one starts (across seasons), a card with its still and title appears in the last 30 seconds, and a 10 second countdown plays it. Play now, Watch credits, a Next episode button in the controls and the Channel Up key are always there. "Autoplay next episode" in Settings turns the countdown off (per device, not synced)
 - Your own **web player page** can be opened full screen inside the app, with the remote, resume and next episode still working
 - **Subtitle search** from SubDL for the exact movie or episode, kept in step with the real video clock ([details](docs/subtitles.md))
 - Watched tracking (automatic at 95 percent, or manual), per-title My List, everything stored locally on the TV

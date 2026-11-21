@@ -37,7 +37,7 @@ below still works. Without any clock CineFlix does not guess: no subtitle is dra
 It finds your `<video>` element and:
 
 - applies remote commands: OK pauses and plays, Left and Right seek 10 s, rewind and fast-forward seek 30 s
-- reports progress, so resume and Continue Watching work
+- reports progress, so resume and Continue Watching work (for a link saved in My Videos, the position is remembered and synced only when the page reports progress)
 - reports when the video ends, so the next episode can start
 - reports the real playback clock, with `paused` true whenever the picture is not moving
 - does nothing when the page is opened outside CineFlix

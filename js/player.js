@@ -35,7 +35,7 @@
   function showUI(focusEl) {
     ui.classList.add('visible');
     if (focusEl) MF.nav.focus(focusEl);
-    else if (!MF.nav.current() || !MF.nav.current().closest('.player-ui')) MF.nav.focus($('player-bar'));
+    else if (!cardVisible() && (!MF.nav.current() || !MF.nav.current().closest('.player-ui'))) MF.nav.focus($('player-bar'));
     clearTimeout(hideTimer);
     hideTimer = setTimeout(function () {
       if (!video.paused) ui.classList.remove('visible');
@@ -57,6 +57,7 @@
     var source = state.sources[index];
     if (!source) { showError('This title could not be played. Check your media server.'); return; }
     state.srcIndex = index;
+    state.srcReady = false;
     $('pbtn-quality').textContent = 'Quality: ' + source.label;
     $('pbtn-quality').classList.toggle('hidden', state.sources.length < 2);
     $('pbtn-findsubs').classList.toggle('hidden', !subsOn());
@@ -312,6 +313,12 @@
   // In page mode a stray Back press would drop the video, so the first press only warns.
   // A second press within 3 s returns to the movie or series page.
   function confirmBack() {
+    // The first Back only takes the next episode card away (or, on the end card, stops its countdown).
+    if (state && cardVisible()) {
+      if (!state.nc.ended) { dismissCard(); return true; }
+      if (state.nc.counting) { stopCount(); $('next-count').classList.add('hidden'); state.nc.dismissed = true; return true; }
+      return false;
+    }
     if (!state || state.mode !== 'page' || state.leaveOk) return false;
     if (exitPageFullscreen()) return true;
     if (Date.now() - (state.warnedAt || 0) < 3000) return false;
@@ -324,8 +331,7 @@
     if (!state || state.endedFired) return;
     state.endedFired = true;
     save(true);
-    if (state.hasNext) { playNext(); return; }
-    leave();
+    handleEnded();
   }
 
   function watchPage() {
@@ -349,7 +355,7 @@
       if (dur && isFinite(dur)) {
         if (state.pageResume > 5 && !state.resumed && v.readyState > 0) {
           state.resumed = true;
-          try { v.currentTime = Math.min(state.pageResume, Math.max(0, dur - 3)); } catch (e) { /* ignore */ }
+          try { v.currentTime = Math.min(state.pageResume, Math.max(0, dur - 3)); announceResume(); } catch (e) { /* ignore */ }
         }
         state.pagePos = v.currentTime;
         state.pageDur = dur;
@@ -364,6 +370,7 @@
   function focusPage() {
     if (!state || state.mode !== 'page') return;
     if (MF.subs && MF.subs.uiOpen()) return;
+    if (cardVisible()) return;
     if (document.activeElement && document.activeElement !== frame && document.activeElement.blur) document.activeElement.blur();
     frame.focus();
     try { if (frame.contentWindow) frame.contentWindow.focus(); } catch (e) { /* cross-origin */ }
@@ -381,7 +388,7 @@
     if (d.type === 'ready') {
       state.pageReady = true;
       setSpinner(false);
-      if (state.pageResume) postToPage({ cmd: 'seek-to', value: state.pageResume });
+      if (state.pageResume) { postToPage({ cmd: 'seek-to', value: state.pageResume }); announceResume(); }
     } else if (d.type === 'progress') {
       state.pagePos = Number(d.position) || 0;
       state.pageDur = Number(d.duration) || 0;
@@ -435,14 +442,8 @@
   // Saved links and MEGA files search by their name instead of a TMDB id.
   function subsOn() { return !!(MF.subs && MF.subs.enabled()); }
 
-  function save(force) {
-    if (!state || state.custom) return;
-    var pos = state.mode === 'page' ? state.pagePos : video.currentTime;
-    var dur = state.mode === 'page' ? state.pageDur : video.duration;
-    if (!dur || !isFinite(dur)) return;
-    if (!force && Math.abs(pos - (state.lastSaved || 0)) < 5) return;
-    state.lastSaved = pos;
-    MF.store.setProgress({
+  function progressEntry(pos, dur) {
+    return {
       type: state.type,
       id: state.id,
       season: state.season,
@@ -454,7 +455,41 @@
       backdrop_path: state.backdrop_path,
       poster_path: state.poster_path,
       still_path: state.still_path
-    });
+    };
+  }
+
+  function save(force) {
+    if (!state || state.finishedMark || (state.custom && !state.resumeKey)) return;
+    // Until the new source has loaded, the video element still holds the previous episode's clock.
+    if (state.mode !== 'page' && !state.srcReady) return;
+    var pos = state.mode === 'page' ? state.pagePos : video.currentTime;
+    var dur = state.mode === 'page' ? state.pageDur : video.duration;
+    if (!dur || !isFinite(dur)) return;
+    if (state.custom) {
+      // Saved links and MEGA files keep only their position (MF.store.setResume ignores the first 10 s and clears a finished video).
+      var now = Date.now();
+      if (!force && now - (state.lastResumeAt || 0) < 5000) return;
+      state.lastResumeAt = now;
+      MF.store.setResume(state.resumeKey, pos, dur, state.title);
+      return;
+    }
+    if (!force && Math.abs(pos - (state.lastSaved || 0)) < 5) return;
+    state.lastSaved = pos;
+    MF.store.setProgress(progressEntry(pos, dur));
+  }
+
+  // Moving on to the next episode: the finished one is recorded as watched, whatever the exact position was.
+  function finishCurrent() {
+    if (state && state.custom) {
+      if (state.resumeKey) MF.store.clearResume(state.resumeKey);
+      state.finishedMark = true;
+      return;
+    }
+    if (!state) return;
+    var dur = state.mode === 'page' ? state.pageDur : video.duration;
+    if (!dur || !isFinite(dur) || (state.mode !== 'page' && !state.srcReady)) { save(true); return; }
+    MF.store.setProgress(progressEntry(dur, dur));
+    state.finishedMark = true;
   }
 
   // Adds the title to Continue Watching as soon as it starts, keeping any known position for this episode.
@@ -462,19 +497,13 @@
     if (state.custom) return;
     var prev = MF.store.getProgress(state.type, state.id);
     var same = prev && (state.type === 'movie' || (prev.season === state.season && prev.episode === state.episode));
-    MF.store.setProgress({
-      type: state.type,
-      id: state.id,
-      season: state.season,
-      episode: state.episode,
-      position: same ? prev.position : 0,
-      duration: same ? prev.duration : 0,
-      title: state.title,
-      subtitle: state.subtitle,
-      backdrop_path: state.backdrop_path,
-      poster_path: state.poster_path,
-      still_path: state.still_path
-    });
+    MF.store.setProgress(progressEntry(same ? prev.position : 0, same ? prev.duration : 0));
+  }
+
+  function announceResume() {
+    if (!state || !state.resumeSaved || state.resumeToasted) return;
+    state.resumeToasted = true;
+    MF.ui.toast('Resuming from ' + MF.ui.fmtTime(state.resume), 3000);
   }
 
   function updateBar() {
@@ -488,8 +517,6 @@
     if (video.buffered.length) {
       $('bar-buf').style.width = (video.buffered.end(video.buffered.length - 1) / d * 100) + '%';
     }
-    var nearEnd = d - video.currentTime < 40;
-    $('pbtn-next').classList.toggle('hidden', !(state && state.hasNext && nearEnd));
   }
 
   function seek(delta) {
@@ -502,13 +529,169 @@
     if (video.paused) video.play(); else video.pause();
   }
 
-  function playNext() {
-    if (!state || !state.next) return;
-    var next = state.next;
-    save(true);
-    next().then(function (opts) {
-      if (opts) MF.player.open(opts);
-      else MF.app.back();
+  // ---- Next episode ----
+  // The next episode is resolved as soon as an episode starts (see open), so the card and the control are instant.
+  var CARD_SECS = 30;      // the card appears when this much of the video is left
+  var COUNT_SECS = 10;     // length of the autoplay countdown
+  var MIN_LEN = 300;       // shorter videos only get the card at the end
+  var countTimer = null;
+
+  function autoplayOn() { return MF.settings.autoplayNext !== false; }
+  function cardVisible() { return !$('next-card').classList.contains('hidden'); }
+
+  function resolveNext() {
+    if (!state || !state.hasNext) return Promise.resolve(null);
+    var mine = state;
+    if (!mine.nextPromise) {
+      mine.nextPromise = Promise.resolve().then(function () { return mine.next(); }).then(function (opts) {
+        mine.nextOpts = opts || null;
+        mine.nextKnown = true;
+        if (state === mine) onNextKnown();
+        return mine.nextOpts;
+      }, function () {
+        mine.nextPromise = null;
+        return null;
+      });
+    }
+    return mine.nextPromise;
+  }
+
+  function nextAvailable() { return !!state && state.hasNext && (!state.nextKnown || !!state.nextOpts); }
+
+  function cardTitle(o) {
+    var name = o.episodeName || '';
+    if (o.season && o.episode) return 'S' + o.season + ':E' + o.episode + '  ' + (name || 'Episode ' + o.episode);
+    return o.title || '';
+  }
+
+  function onNextKnown() {
+    var o = state.nextOpts;
+    $('pbtn-next').classList.toggle('hidden', !o);
+    if (!o) return;
+    $('next-title').textContent = cardTitle(o);
+    var src = MF.tmdb.img(o.still_path || o.backdrop_path, 'w780');
+    $('next-thumb').classList.toggle('empty', !src);
+    if (src) $('next-img').src = src; else $('next-img').removeAttribute('src');
+    checkCard();
+  }
+
+  function stopCount() {
+    if (countTimer) { clearInterval(countTimer); countTimer = null; }
+    if (state && state.nc) state.nc.counting = false;
+  }
+
+  function paintCount() {
+    var nc = state.nc;
+    var secs = Math.max(0, Math.ceil(nc.msLeft / 1000));
+    $('next-count-text').textContent = 'Starting in ' + secs;
+    $('next-count-fill').style.width = Math.max(0, Math.min(100, nc.msLeft / nc.msTotal * 100)) + '%';
+  }
+
+  function startCount(secs) {
+    var nc = state.nc;
+    stopCount();
+    nc.counting = true;
+    nc.msTotal = nc.msLeft = secs * 1000;
+    nc.last = Date.now();
+    $('next-count').classList.remove('hidden');
+    paintCount();
+    countTimer = setInterval(function () {
+      if (!state || !state.nc.counting) { stopCount(); return; }
+      var now = Date.now();
+      var dt = now - state.nc.last;
+      state.nc.last = now;
+      // A paused video holds the countdown, so someone who stopped to think is not rushed.
+      if (state.mode !== 'page' && video.paused && !video.ended) return;
+      state.nc.msLeft -= dt;
+      paintCount();
+      if (state.nc.msLeft <= 0) advance();
+    }, 100);
+  }
+
+  function setCardMode(ended) {
+    state.nc.ended = !!ended;
+    $('next-dismiss').textContent = ended ? 'Back to details' : 'Watch credits';
+  }
+
+  function openCard(ended, secs) {
+    var nc = state.nc;
+    nc.shown = true;
+    setCardMode(ended);
+    $('next-card').classList.remove('hidden');
+    $('next-count').classList.add('hidden');
+    if (ended && state.mode === 'page') blurPage();
+    MF.nav.focus($('next-play'));
+    if (autoplayOn() && !nc.dismissed) startCount(secs);
+  }
+
+  function hideCard() {
+    stopCount();
+    if (state && state.nc) state.nc.shown = false;
+    var card = $('next-card');
+    var cur = MF.nav.current();
+    card.classList.add('hidden');
+    if (cur && card.contains(cur) && state && state.mode !== 'page') MF.nav.focus($('player-bar'));
+  }
+
+  function dismissCard() {
+    if (!state) return;
+    state.nc.dismissed = true;
+    hideCard();
+    showUI($('player-bar'));
+  }
+
+  // Shows the card in the last seconds; takes it away again when the video is moved back out of them.
+  function checkCard() {
+    var nc = state && state.nc;
+    if (!nc || state.mode === 'page' || !state.srcReady || !state.nextOpts) return;
+    var d = video.duration;
+    if (!d || !isFinite(d) || d <= MIN_LEN || video.ended) return;
+    var left = d - video.currentTime;
+    if (left > CARD_SECS) {
+      if (nc.shown) hideCard();
+      nc.dismissed = false;
+    } else if (!nc.shown && !nc.dismissed && !video.seeking) {
+      openCard(false, Math.min(COUNT_SECS, Math.max(1, Math.ceil(left))));
+    }
+  }
+
+  function advance() {
+    stopCount();
+    playNext('card');
+  }
+
+  // The video (or the web page's video) reached its end.
+  function handleEnded() {
+    if (!state) return;
+    var mine = state;
+    if (!state.hasNext) { leave(); return; }
+    resolveNext().then(function (o) {
+      if (state !== mine) return;
+      if (!o) { leave(); return; }
+      var nc = mine.nc;
+      if (nc.shown && nc.counting) { advance(); return; }
+      if (nc.shown) { setCardMode(true); return; }
+      openCard(true, COUNT_SECS);
+    });
+  }
+
+  // reason: 'card' (countdown, Play now or the end of the video), or nothing for the control and remote key.
+  function playNext(reason) {
+    if (!state || !state.hasNext || state.advancing) return;
+    var mine = state;
+    var d = mine.mode === 'page' ? mine.pageDur : video.duration;
+    var left = d && isFinite(d) ? d - (mine.mode === 'page' ? mine.pagePos : video.currentTime) : Infinity;
+    mine.advancing = true;
+    resolveNext().then(function (opts) {
+      mine.advancing = false;
+      if (state !== mine) return;
+      if (!opts) {
+        if (reason === 'card') leave();
+        return;
+      }
+      stopCount();
+      if (reason === 'card' || mine.nc.shown || left <= CARD_SECS + 10) finishCurrent(); else save(true);
+      MF.player.open(Object.assign({}, opts, { fromNext: true }));
     });
   }
 
@@ -518,20 +701,42 @@
     else if (act === 'fwd10') seek(10);
     else if (act === 'subs') applySubtitle(state.subIndex + 1 >= state.subtitles.length ? -1 : state.subIndex + 1);
     else if (act === 'quality') setSource((state.srcIndex + 1) % state.sources.length, video.currentTime);
-    else if (act === 'next') playNext();
+    else if (act === 'next') { playNext(); return; }
     else if (act === 'findsubs') { MF.subs.openPanel(); return; }
     showUI();
+  }
+
+  // While the card is up the arrows move between its two buttons and OK presses one. Back is handled in confirmBack.
+  function cardKey(code) {
+    var buttons = [$('next-play'), $('next-dismiss')];
+    var cur = MF.nav.current();
+    var at = buttons.indexOf(cur);
+    if (code === KEY.LEFT || code === KEY.RIGHT || code === KEY.UP || code === KEY.DOWN) {
+      var forward = code === KEY.RIGHT || code === KEY.DOWN;
+      MF.nav.focus(buttons[at < 0 ? 0 : (forward ? Math.min(1, at + 1) : Math.max(0, at - 1))]);
+      return true;
+    }
+    if (code === KEY.ENTER) {
+      (at < 0 ? buttons[0] : cur).click();
+      return true;
+    }
+    return false;
   }
 
   function onKey(e, code) {
     if (!state) return false;
     if (MF.subs && MF.subs.uiOpen()) return false;
+    if ((code === KEY.CH_UP || code === KEY.MEDIA_NEXT) && state.hasNext) {
+      if (nextAvailable()) playNext();
+      return true;
+    }
+    if (cardVisible() && cardKey(code)) return true;
     if (state.mode === 'page') return onPageKey(code);
     switch (code) {
       case KEY.PLAY: video.play(); showUI(); return true;
       case KEY.PAUSE: video.pause(); showUI(); return true;
       case KEY.PLAYPAUSE: toggle(); showUI(); return true;
-      case KEY.STOP: MF.app.back(); return true;
+      case KEY.STOP: hideCard(); MF.app.back(); return true;
       case KEY.FF: seek(30); showUI(); return true;
       case KEY.RW: seek(-30); showUI(); return true;
       case KEY.LEFT:
@@ -540,6 +745,14 @@
         if (!uiVisible() || MF.nav.current() === $('player-bar')) {
           seek(code === KEY.LEFT ? -10 : 10);
           showUI($('player-bar'));
+          return true;
+        }
+        // Left and Right walk the control row in order (the geometry search would jump to the progress bar instead).
+        var row = Array.prototype.filter.call(document.querySelectorAll('#player-controls .pbtn'), function (b) { return !b.classList.contains('hidden'); });
+        var at = row.indexOf(MF.nav.current());
+        if (at >= 0) {
+          var to = row[Math.max(0, Math.min(row.length - 1, at + (code === KEY.LEFT ? -1 : 1)))];
+          showUI(to);
           return true;
         }
         showUI(MF.nav.current());
@@ -571,15 +784,18 @@
     // Page mode hands the remote to the page (see focusPage); Back still closes via history (app.js).
 
     video.addEventListener('loadedmetadata', function () {
+      if (state) state.srcReady = true;
       if (state && state.pendingSeek) {
         video.currentTime = Math.min(state.pendingSeek, Math.max(0, video.duration - 10));
         state.pendingSeek = 0;
+        announceResume();
       }
     });
     video.addEventListener('waiting', function () { setSpinner(true); });
     video.addEventListener('playing', function () { setSpinner(false); $('player-error').classList.add('hidden'); });
     video.addEventListener('canplay', function () { setSpinner(false); });
-    video.addEventListener('timeupdate', function () { updateBar(); save(false); });
+    video.addEventListener('timeupdate', function () { updateBar(); save(false); checkCard(); });
+    video.addEventListener('seeked', checkCard);
     video.addEventListener('progress', updateBar);
     video.addEventListener('play', function () { $('pbtn-toggle').innerHTML = MF.icon('pause'); showUI(); });
     video.addEventListener('pause', function () {
@@ -588,11 +804,28 @@
       save(true);
     });
     video.addEventListener('ended', function () {
+      if (!state || (state.mode !== 'page' && !state.srcReady)) return;
       save(true);
-      if (state && state.hasNext) playNext();
-      else MF.app.back();
+      handleEnded();
+    });
+    // A still that fails to load falls back to the show's backdrop, and then to a plain block.
+    $('next-img').addEventListener('error', function () {
+      var o = state && state.nextOpts;
+      var back = o && o.backdrop_path ? MF.tmdb.img(o.backdrop_path, 'w780') : '';
+      if (back && $('next-img').getAttribute('src') !== back) $('next-img').src = back;
+      else $('next-thumb').classList.add('empty');
+    });
+    $('next-play').addEventListener('click', advance);
+    $('next-dismiss').addEventListener('click', function () {
+      if (state && state.nc.ended) { stopCount(); leave(); } else dismissCard();
     });
     video.addEventListener('error', function () { if (!hls) failover(); });
+    // Leaving the app (or the TV going to sleep) while a video plays must not lose its position.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden || !state) return;
+      save(true);
+      if (state.custom && MF.sync && MF.sync.flush) MF.sync.flush();
+    });
 
     Array.prototype.forEach.call(document.querySelectorAll('#player-controls .pbtn'), function (btn) {
       btn.addEventListener('click', function () { onAction(btn.getAttribute('data-act')); });
@@ -680,9 +913,14 @@
 
     // opts: {type, id, title, subtitle, season, episode, backdrop_path, poster_path, still_path, resume, next}
     open: function (opts) {
-      if (state) { save(true); destroyHls(); resetPage(); }
-      state = Object.assign({ srcIndex: 0, subIndex: -1, sources: [], subtitles: [] }, opts);
+      if (state) { save(true); destroyHls(); resetPage(); video.pause(); }
+      hideCard();
+      state = Object.assign({ srcIndex: 0, subIndex: -1, sources: [], subtitles: [], nc: {} }, opts);
       state.hasNext = typeof opts.next === 'function';
+      // A saved link or MEGA file continues where it stopped, unless it is played from the start on purpose.
+      var saved = state.custom && state.resumeKey && !opts.resume ? MF.store.getResume(state.resumeKey) : null;
+      state.resumeSaved = !!saved;
+      state.resume = saved ? saved.position : (opts.resume || 0);
       $('player-title').textContent = opts.title || '';
       $('player-sub').textContent = opts.subtitle || '';
       $('player-error').classList.add('hidden');
@@ -690,21 +928,25 @@
       $('bar-buf').style.width = '0%';
       $('bar-knob').style.left = '0%';
       $('pbtn-next').classList.add('hidden');
+      $('next-img').removeAttribute('src');
+      $('next-title').textContent = '';
       setSpinner(true);
       showUI($('player-bar'));
+      if (opts.fromNext) markStarted();
+      if (state.hasNext) resolveNext();
 
       if (MF.subs) MF.subs.onPlayerOpen({ type: opts.custom ? 'video' : opts.type, id: opts.id, season: opts.season, episode: opts.episode, title: opts.title || '', custom: !!opts.custom });
       var mine = state;
       var found = opts.mega ? MF.videos.megaStream(opts.mega) : opts.custom ? MF.server.direct(opts.url) : MF.server.streams(opts.type, opts.id, opts.season, opts.episode);
       found.then(function (data) {
         if (state !== mine) return;
-        if (data.page) { openPage(data.page, opts.resume || 0); return; }
+        if (data.page) { openPage(data.page, state.resume); return; }
         if (!data.sources.length) { showError(opts.custom ? 'This link has no video to play.' : 'Your media server has no stream for this title.'); return; }
         state.pageFallback = data.pageFallback || null;
         state.sources = data.sources;
         state.subtitles = data.subtitles;
         setupSubtitles(data.subtitles);
-        setSource(0, opts.resume || 0);
+        setSource(0, state.resume);
       }, function (err) {
         if (state === mine) showError(err.message);
       });
@@ -713,6 +955,7 @@
     close: function () {
       save(true);
       state = null;
+      hideCard();
       resetPage();
       if (MF.subs) MF.subs.onPlayerClose();
       clearTimeout(hideTimer);
