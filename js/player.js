@@ -206,6 +206,7 @@
     freshFrame();
     frame.onload = function () {
       if (!state || state.mode !== 'page') return;
+      try { blockPopups(frame.contentWindow, 0); } catch (e) { /* ignore */ }
       setSpinner(false);
       focusPage();
       // Pages that don't send "ready" still get the resume position once loaded.
@@ -217,6 +218,7 @@
     state.warnedAt = 0;
     frame.src = url;
     watchPage();
+    watchPopups();
     setTimeout(focusPage, 1500);
     showHint();
   }
@@ -265,6 +267,38 @@
 
   function stopWatch() {
     if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
+    if (popupTimer) { clearInterval(popupTimer); popupTimer = null; }
+  }
+
+  // ---- Pop-ups from the player page ----
+  // webOS closes the whole app when a page opens a pop-up window and closes it again at once, which is what many
+  // players do on the first click. A sandbox would stop that but makes some pages refuse to play, so instead the
+  // page's window.open is replaced by one that opens nothing and hands back a window that is already closed. The page
+  // carries on as if its pop-up had come and gone. Needs the same access to the page that pageVideo() uses.
+  var popupTimer = null;
+  function noPopup() {
+    return { closed: true, close: function () {}, focus: function () {}, blur: function () {}, postMessage: function () {}, document: null, location: { href: 'about:blank' } };
+  }
+
+  function blockPopups(win, level) {
+    if (!win || level > 3) return;
+    try {
+      if (win.open !== noPopup) win.open = noPopup;
+      var frames = win.document.querySelectorAll('iframe, frame');
+      Array.prototype.forEach.call(frames, function (fr) {
+        var inner = null;
+        try { inner = fr.contentWindow; } catch (e) { inner = null; }
+        blockPopups(inner, level + 1);
+      });
+    } catch (e) { /* cross-origin without access: nothing to do */ }
+  }
+
+  function watchPopups() {
+    if (popupTimer) clearInterval(popupTimer);
+    popupTimer = setInterval(function () {
+      if (!state || state.mode !== 'page') return;
+      try { blockPopups(frame.contentWindow, 0); } catch (e) { /* ignore */ }
+    }, 100);
   }
 
   // Leaving the player on purpose (video ended, page asked to close) skips the Back warning.
