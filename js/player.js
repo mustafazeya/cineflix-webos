@@ -219,6 +219,7 @@
     frame.src = url;
     watchPage();
     watchPopups();
+    wakeCc();
     setTimeout(focusPage, 1500);
     showHint();
   }
@@ -268,6 +269,33 @@
   function stopWatch() {
     if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
     if (popupTimer) { clearInterval(popupTimer); popupTimer = null; }
+    clearTimeout(ccTimer);
+  }
+
+  // ---- The CC button over a player page ----
+  // It shows when the page opens and whenever the viewer clicks or presses a key on the video, then fades after a
+  // few seconds so it does not sit over the picture. It stays while it has focus or the subtitle panel is open.
+  var ccTimer = null;
+  var CC_SHOW_MS = 4000;
+
+  function wakeCc() {
+    var cc = $('subs-cc');
+    cc.classList.remove('idle');
+    clearTimeout(ccTimer);
+    ccTimer = setTimeout(function fade() {
+      if (!state || state.mode !== 'page') return;
+      if (cc.classList.contains('focused') || !$('subs-panel').classList.contains('hidden')) { ccTimer = setTimeout(fade, CC_SHOW_MS); return; }
+      cc.classList.add('idle');
+    }, CC_SHOW_MS);
+  }
+
+  // Clicks and keys inside the page never reach the app, so they are listened for in the page's own documents.
+  function hookActivity(doc) {
+    if (doc.__cfWake) return;
+    doc.__cfWake = true;
+    ['mousedown', 'click', 'touchstart', 'keydown'].forEach(function (name) {
+      doc.addEventListener(name, wakeCc, true);
+    });
   }
 
   // ---- Pop-ups from the player page ----
@@ -284,6 +312,7 @@
     if (!win || level > 3) return;
     try {
       if (win.open !== noPopup) win.open = noPopup;
+      hookActivity(win.document);
       var frames = win.document.querySelectorAll('iframe, frame');
       Array.prototype.forEach.call(frames, function (fr) {
         var inner = null;
@@ -441,6 +470,7 @@
     if (code === KEY.YELLOW && subsOn()) { MF.subs.openPanel(); return true; }
     // Focus came back to the app (e.g. pointer click): return it to the page, then forward this key.
     setTimeout(focusPage, 0);
+    wakeCc();
     if (!KEY_NAMES[code]) return false;
     var msg = pageCommand(code);
     msg.type = 'key';

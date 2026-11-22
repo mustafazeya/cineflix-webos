@@ -1017,6 +1017,7 @@ body.pointer-mode .row:hover .strip-arrow.off { display: none; }
   transition: opacity .15s, background .15s, color .15s;
 }
 .subs-cc:hover, .subs-cc.focused { opacity: 1; background: #fff; color: #000; }
+.subs-cc.idle:not(.focused) { opacity: 0; pointer-events: none; }
 
 .subs-panel { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 7; background: rgba(0, 0, 0, .6); }
 .subs-box {

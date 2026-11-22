@@ -19,6 +19,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Voice search: a mic button next to the Search field. It clears the field and opens the TV keyboard, whose voice key dictates into it, and the search runs when the words arrive
 
 ### Fixed
+- The CC button over a player page fades out after 4 seconds and comes back when you click or press a key on the video
 - Clicking in a player page closed the whole app: on webOS a pop-up window that a page opens and closes at once (many players do this on the first click) takes the app down with it. The player page can no longer open pop-up windows; the page is told its pop-up opened and closed, so pages that insist on pop-ups keep playing
 - Position changes that keep coming in while a video plays no longer postpone the background send to the sync server until playback stops
 - MEGA streaming: a late buffer event after closing the player no longer throws
